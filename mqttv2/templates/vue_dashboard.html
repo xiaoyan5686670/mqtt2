@@ -1,0 +1,36 @@
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>ID</th>
+                <th>设备名称</th>
+                <th>设备类型</th>
+                <th>位置</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr v-for="device in devices" :key="device.id">
+                <td><i class="fas fa-microchip me-1"></i>{{ device.id }}</td>
+                <td>{{ device.name }}</td>
+                <td>{{ device.device_type }}</td>
+                <td><i class="fas fa-map-marker-alt me-1"></i>{{ device.location }}</td>
+                <td>
+                    <span :class="device.status === '在线' ? 'status-online' : 'status-offline'">
+                        <i :class="device.status === '在线' ? 'fas fa-circle' : 'fas fa-circle'"></i>
+                        {{ device.status }}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-warning action-btn" @click="editDevice(device)" title="编辑设备">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger action-btn" @click="deleteDevice(device.id)" title="删除设备">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
