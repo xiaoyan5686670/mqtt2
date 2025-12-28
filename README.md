@@ -1,13 +1,13 @@
 # IOT管理系统
 
-基于Python 3.12 + Flask + Vue 3 + SQLite的MQTT协议管理系统
+基于Python 3.12 + FastAPI + Vue 3 + SQLite的MQTT协议管理系统
 
 ## 技术栈
 
-- 后端: Flask (Python 3.12)
+- 后端: FastAPI (Python 3.12)
 - 前端: Vue 3 + Bootstrap
 - 数据库: SQLite
-- 协议: MQTT (待实现)
+- 协议: MQTT
 
 ## 功能特性
 
@@ -15,6 +15,7 @@
 - 设备监控仪表板
 - 实时传感器数据更新
 - 响应式界面设计
+- MQTT服务器配置管理
 
 ## 快速开始
 
@@ -25,48 +26,41 @@
 
 2. 运行应用:
    ```bash
-   python server.py
+   python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
    ```
 
 3. 访问应用:
-   - 地址: http://localhost:5000
-   - 默认账户: admin/admin123
+   - 地址: http://localhost:8000
+   - 默认账户: 系统通过前端界面进行操作
 
 ## 项目结构
 
 ```
 mqttv2/
-├── server.py           # 统一应用入口（推荐使用）
+├── src/
+│   └── main.py         # FastAPI应用主文件
 ├── requirements.txt    # 项目依赖
 ├── static/             # 静态资源目录
 ├── templates/          # HTML模板
-│   ├── login.html      # 登录页面
-│   ├── dashboard.html  # 传统仪表板
-│   └── vue_dashboard.html # Vue 3仪表板
+├── models.py           # 数据模型定义
 └── README.md
 ```
 
 ## 功能说明
 
-- 登录验证: 用户需要登录才能访问系统功能
-- 设备监控: 实时显示设备状态和传感器数据
-- 自动更新: 每3秒自动刷新设备数据
+- 设备管理: 添加、编辑、删除和查看设备
+- 传感器监控: 实时显示传感器数据
+- 自动更新: 每3秒自动刷新传感器数据
+- MQTT配置: 管理MQTT服务器连接参数
 - 响应式界面: 适配不同屏幕尺寸
 
 ## 开发计划
 
-- 集成MQTT协议支持
-- 添加设备管理功能
+- 集成更多MQTT协议功能
+- 添加设备告警功能
 - 实现数据存储和历史查询
-- 增加告警功能
+- 增加更完善的用户管理系统
 
 ## 重要说明
 
-现在，项目中的`server.py`是整合后的完整应用，包含了所有必要的功能和修复了导入问题。建议只使用这个文件运行应用，其他文件是为了保持项目结构完整性而保留的。
-
-要运行项目，请使用命令：
-```bash
-python server.py
-```
-
-访问 `http://localhost:5000` 即可使用系统。
+项目使用FastAPI作为后端框架，集成了Vue 3前端界面，实现了设备管理和传感器监控功能。系统还包含MQTT服务器配置管理功能，可以配置、测试和激活不同的MQTT服务器连接。
