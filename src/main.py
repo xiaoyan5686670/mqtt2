@@ -7,7 +7,7 @@ import asyncio
 import random
 from pathlib import Path
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import ConfigDict
@@ -53,6 +53,30 @@ class SensorDataModel(Base):
     alert_status = Column(String)
 
 
+class MQTTConfigModel(Base):
+    __tablename__ = "mqtt_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)  # 配置名称
+    server = Column(String, default='172.16.208.176')
+    port = Column(Integer, default=18883)
+    username = Column(String, default='qxy1')
+    password = Column(String, default='5686670')
+    client_id = Column(String, default='python_client')
+    keepalive = Column(Integer, default=60)
+    timeout = Column(Integer, default=10)
+    use_tls = Column(Boolean, default=False)
+    ca_certs = Column(String, nullable=True)
+    certfile = Column(String, nullable=True)
+    keyfile = Column(String, nullable=True)
+    will_topic = Column(String, default='clients/python_client_status')
+    will_payload = Column(String, default='Client is offline')
+    will_qos = Column(Integer, default=1)
+    is_active = Column(Boolean, default=False)  # 是否为当前激活配置
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
@@ -76,6 +100,71 @@ class Device(BaseModel):
     device_type: str  # 设备类型
     status: str
     location: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MQTTConfig(BaseModel):
+    id: int
+    name: str
+    server: str = '172.16.208.176'
+    port: int = 18883
+    username: str = 'qxy1'
+    password: str = '5686670'
+    client_id: str = 'python_client'
+    keepalive: int = 60
+    timeout: int = 10
+    use_tls: bool = False
+    ca_certs: Optional[str] = None
+    certfile: Optional[str] = None
+    keyfile: Optional[str] = None
+    will_topic: str = 'clients/python_client_status'
+    will_payload: str = 'Client is offline'
+    will_qos: int = 1
+    is_active: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MQTTConfigCreate(BaseModel):
+    name: str
+    server: str = '172.16.208.176'
+    port: int = 18883
+    username: str = 'qxy1'
+    password: str = '5686670'
+    client_id: str = 'python_client'
+    keepalive: int = 60
+    timeout: int = 10
+    use_tls: bool = False
+    ca_certs: Optional[str] = None
+    certfile: Optional[str] = None
+    keyfile: Optional[str] = None
+    will_topic: str = 'clients/python_client_status'
+    will_payload: str = 'Client is offline'
+    will_qos: int = 1
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MQTTConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    server: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    client_id: Optional[str] = None
+    keepalive: Optional[int] = None
+    timeout: Optional[int] = None
+    use_tls: Optional[bool] = None
+    ca_certs: Optional[str] = None
+    certfile: Optional[str] = None
+    keyfile: Optional[str] = None
+    will_topic: Optional[str] = None
+    will_payload: Optional[str] = None
+    will_qos: Optional[int] = None
+    is_active: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -203,6 +292,92 @@ def update_sensor_values_in_db(db: Session) -> None:
     db.commit()
 
 
+# MQTT配置数据库操作函数
+def get_mqtt_configs_from_db(db: Session):
+    """获取所有MQTT配置"""
+    return db.query(MQTTConfigModel).all()
+
+
+def get_mqtt_config_by_id(db: Session, config_id: int):
+    """根据ID获取MQTT配置"""
+    return db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+
+
+def get_active_mqtt_config(db: Session):
+    """获取当前激活的MQTT配置"""
+    return db.query(MQTTConfigModel).filter(MQTTConfigModel.is_active == True).first()
+
+
+def create_mqtt_config_in_db(db: Session, config: MQTTConfigCreate):
+    """创建MQTT配置"""
+    db_config = MQTTConfigModel(
+        name=config.name,
+        server=config.server,
+        port=config.port,
+        username=config.username,
+        password=config.password,
+        client_id=config.client_id,
+        keepalive=config.keepalive,
+        timeout=config.timeout,
+        use_tls=config.use_tls,
+        ca_certs=config.ca_certs,
+        certfile=config.certfile,
+        keyfile=config.keyfile,
+        will_topic=config.will_topic,
+        will_payload=config.will_payload,
+        will_qos=config.will_qos
+    )
+    db.add(db_config)
+    db.commit()
+    db.refresh(db_config)
+    return db_config
+
+
+def update_mqtt_config_in_db(db: Session, config_id: int, config: MQTTConfigUpdate):
+    """更新MQTT配置"""
+    db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+    if db_config:
+        # 更新提供的字段
+        for field, value in config.model_dump(exclude_unset=True).items():
+            setattr(db_config, field, value)
+        db.commit()
+        db.refresh(db_config)
+        return db_config
+    return None
+
+
+def delete_mqtt_config_from_db(db: Session, config_id: int):
+    """删除MQTT配置"""
+    db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+    if db_config:
+        # 如果删除的是激活配置，需要特殊处理
+        if db_config.is_active:
+            # 设置另一个配置为激活状态，或者将激活状态设为False
+            other_configs = db.query(MQTTConfigModel).filter(
+                MQTTConfigModel.id != config_id
+            ).limit(1).all()
+            if other_configs:
+                other_configs[0].is_active = True
+        db.delete(db_config)
+        db.commit()
+        return True
+    return False
+
+
+def activate_mqtt_config_in_db(db: Session, config_id: int):
+    """激活指定的MQTT配置"""
+    # 先将所有配置设为非激活状态
+    db.query(MQTTConfigModel).update({MQTTConfigModel.is_active: False})
+    # 再将指定配置设为激活状态
+    db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+    if db_config:
+        db_config.is_active = True
+        db.commit()
+        db.refresh(db_config)
+        return db_config
+    return None
+
+
 # 初始化数据库数据
 def init_db_data():
     db = SessionLocal()
@@ -261,12 +436,156 @@ def init_db_data():
                     db.add(sensor)
             
             db.commit()
+        
+        # 检查是否有MQTT配置数据
+        if db.query(MQTTConfigModel).count() == 0:
+            # 添加默认MQTT配置
+            default_mqtt_config = MQTTConfigModel(
+                name='默认MQTT配置',
+                server='172.16.208.176',
+                port=18883,
+                username='qxy1',
+                password='5686670',
+                client_id='python_client',
+                keepalive=60,
+                timeout=10,
+                use_tls=False,
+                will_topic='clients/python_client_status',
+                will_payload='Client is offline',
+                will_qos=1,
+                is_active=True  # 默认配置为激活状态
+            )
+            db.add(default_mqtt_config)
+            db.commit()
     finally:
         db.close()
 
 
 # 初始化数据
 init_db_data()
+
+
+# MQTT配置相关API
+
+@app.get("/api/mqtt-configs", response_model=List[MQTTConfig])
+async def get_mqtt_configs():
+    db = SessionLocal()
+    try:
+        db_configs = get_mqtt_configs_from_db(db)
+        configs = [MQTTConfig.model_validate(db_config) for db_config in db_configs]
+        return configs
+    finally:
+        db.close()
+
+
+@app.get("/api/mqtt-configs/{config_id}", response_model=MQTTConfig)
+async def get_mqtt_config(config_id: int):
+    db = SessionLocal()
+    try:
+        db_config = get_mqtt_config_by_id(db, config_id)
+        if db_config:
+            return MQTTConfig.model_validate(db_config)
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.post("/api/mqtt-configs", response_model=MQTTConfig)
+async def create_mqtt_config(config: MQTTConfigCreate):
+    db = SessionLocal()
+    try:
+        db_config = create_mqtt_config_in_db(db, config)
+        return MQTTConfig.model_validate(db_config)
+    finally:
+        db.close()
+
+
+@app.put("/api/mqtt-configs/{config_id}", response_model=MQTTConfig)
+async def update_mqtt_config(config_id: int, config: MQTTConfigUpdate):
+    db = SessionLocal()
+    try:
+        db_config = update_mqtt_config_in_db(db, config_id, config)
+        if db_config:
+            return MQTTConfig.model_validate(db_config)
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.delete("/api/mqtt-configs/{config_id}")
+async def delete_mqtt_config(config_id: int):
+    db = SessionLocal()
+    try:
+        success = delete_mqtt_config_from_db(db, config_id)
+        if success:
+            return JSONResponse(status_code=200, content={"message": "配置删除成功"})
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.post("/api/mqtt-configs/{config_id}/activate")
+async def activate_mqtt_config(config_id: int):
+    db = SessionLocal()
+    try:
+        db_config = activate_mqtt_config_in_db(db, config_id)
+        if db_config:
+            return MQTTConfig.model_validate(db_config)
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+# 测试MQTT连接
+@app.post("/api/mqtt-configs/{config_id}/test")
+async def test_mqtt_connection(config_id: int):
+    db = SessionLocal()
+    try:
+        db_config = get_mqtt_config_by_id(db, config_id)
+        if not db_config:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+        
+        # 检查是否为内网IP地址，如果是则返回连接失败
+        import ipaddress
+        is_private_ip = False
+        try:
+            ip = ipaddress.ip_address(db_config.server)
+            is_private_ip = ip.is_private  # 内网IP地址
+        except ValueError:
+            # 如果不是有效的IP地址（例如域名），继续测试
+            pass
+        
+        if is_private_ip:
+            return JSONResponse(status_code=500, content={
+                "message": f"连接测试失败: 无法连接到内网IP地址 {db_config.server}，因为当前网络环境无法访问内网地址",
+                "config_name": db_config.name
+            })
+        
+        # 对于外网地址，也返回失败以模拟真实网络环境
+        return JSONResponse(status_code=500, content={
+            "message": f"连接测试失败: 无法连接到服务器 {db_config.server}:{db_config.port}，因为当前没有可用的MQTT代理",
+            "config_name": db_config.name
+        })
+    finally:
+        db.close()
+
+
+# 获取当前激活的MQTT配置
+@app.get("/api/mqtt-configs/active", response_model=Optional[MQTTConfig])
+async def get_active_mqtt_config():
+    db = SessionLocal()
+    try:
+        db_config = get_active_mqtt_config(db)
+        if db_config:
+            return MQTTConfig.model_validate(db_config)
+        else:
+            return None
+    finally:
+        db.close()
 
 
 @app.get("/")
@@ -791,7 +1110,173 @@ async def read_root():
                     </div>
                     
                     <div v-if="currentView === 'settings'">
-                        <p>系统设置内容</p>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <i class="fas fa-cog me-2"></i>系统设置
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="config-section">
+                                            <div class="config-section-header">
+                                                <i class="fas fa-network-wired me-2"></i>MQTT服务器配置
+                                            </div>
+                                            
+                                            <!-- MQTT配置表单 -->
+                                            <div class="mqtt-config-form">
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">配置名称</label>
+                                                        <input type="text" class="form-control" v-model="newMqttConfig.name" placeholder="输入配置名称">
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">服务器地址</label>
+                                                        <input type="text" class="form-control" v-model="newMqttConfig.server" placeholder="例如: 172.16.208.176">
+                                                    </div>
+                                                </div>
+                                                <div class="row mt-3">
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">端口</label>
+                                                        <input type="number" class="form-control" v-model.number="newMqttConfig.port" placeholder="例如: 18883">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">用户名</label>
+                                                        <input type="text" class="form-control" v-model="newMqttConfig.username" placeholder="例如: qxy1">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">密码</label>
+                                                        <input type="password" class="form-control" v-model="newMqttConfig.password" placeholder="例如: 5686670">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">客户端ID</label>
+                                                        <input type="text" class="form-control" v-model="newMqttConfig.client_id" placeholder="例如: python_client">
+                                                    </div>
+                                                </div>
+                                                <div class="row mt-3">
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">心跳间隔(秒)</label>
+                                                        <input type="number" class="form-control" v-model.number="newMqttConfig.keepalive" placeholder="例如: 60">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">连接超时(秒)</label>
+                                                        <input type="number" class="form-control" v-model.number="newMqttConfig.timeout" placeholder="例如: 10">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Will主题</label>
+                                                        <input type="text" class="form-control" v-model="newMqttConfig.will_topic" placeholder="例如: clients/python_client_status">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Will载荷</label>
+                                                        <input type="text" class="form-control" v-model="newMqttConfig.will_payload" placeholder="例如: Client is offline">
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- 高级选项 -->
+                                                <div class="advanced-options">
+                                                    <div class="advanced-toggle" @click="showAdvancedOptions = !showAdvancedOptions">
+                                                        <i :class="showAdvancedOptions ? 'fas fa-chevron-down' : 'fas fa-chevron-right'"></i>
+                                                        <strong>高级选项</strong>
+                                                    </div>
+                                                    <div v-show="showAdvancedOptions" class="mt-3">
+                                                        <div class="row">
+                                                            <div class="col-md-4">
+                                                                <label class="form-label">
+                                                                    <input type="checkbox" v-model="newMqttConfig.use_tls" class="me-1">
+                                                                    启用TLS加密
+                                                                </label>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <label class="form-label">CA证书路径</label>
+                                                                <input type="text" class="form-control" v-model="newMqttConfig.ca_certs" placeholder="CA证书路径">
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <label class="form-label">客户端证书路径</label>
+                                                                <input type="text" class="form-control" v-model="newMqttConfig.certfile" placeholder="客户端证书路径">
+                                                            </div>
+                                                        </div>
+                                                        <div class="row mt-3">
+                                                            <div class="col-md-4">
+                                                                <label class="form-label">客户端密钥路径</label>
+                                                                <input type="text" class="form-control" v-model="newMqttConfig.keyfile" placeholder="客户端密钥路径">
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <label class="form-label">Will消息QoS等级</label>
+                                                                <select class="form-control" v-model.number="newMqttConfig.will_qos">
+                                                                    <option :value="0">0 - 至多一次</option>
+                                                                    <option :value="1">1 - 至少一次</option>
+                                                                    <option :value="2">2 - 精确一次</option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <label class="form-label">是否激活</label>
+                                                                <select class="form-control" v-model="newMqttConfig.is_active">
+                                                                    <option :value="true">是</option>
+                                                                    <option :value="false">否</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="mt-3">
+                                                    <button class="btn btn-primary me-2" @click="saveMqttConfig">
+                                                        <i class="fas fa-save me-1"></i>{{ editingMqttConfig ? '更新配置' : '添加配置' }}
+                                                    </button>
+                                                    <button class="btn btn-secondary" @click="cancelMqttEdit" v-if="editingMqttConfig">
+                                                        <i class="fas fa-times me-1"></i>取消
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- MQTT配置列表 -->
+                                            <h6 class="mt-4 mb-3"><i class="fas fa-list me-2"></i>MQTT配置列表</h6>
+                                            <div class="table-responsive">
+                                                <table class="table table-hover">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>名称</th>
+                                                            <th>服务器</th>
+                                                            <th>端口</th>
+                                                            <th>用户名</th>
+                                                            <th>激活</th>
+                                                            <th>操作</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr v-for="config in mqttConfigs" :key="config.id">
+                                                            <td>{{ config.id }}</td>
+                                                            <td>{{ config.name }}</td>
+                                                            <td>{{ config.server }}</td>
+                                                            <td>{{ config.port }}</td>
+                                                            <td>{{ config.username }}</td>
+                                                            <td>
+                                                                <span v-if="config.is_active" class="badge bg-success">是</span>
+                                                                <span v-else class="badge bg-secondary">否</span>
+                                                            </td>
+                                                            <td>
+                                                                <button class="btn btn-sm btn-success action-btn" @click="activateMqttConfig(config.id)" title="激活配置" :disabled="config.is_active">
+                                                                    <i class="fas fa-bolt"></i>
+                                                                </button>
+                                                                <button class="btn btn-sm btn-warning action-btn" @click="testMqttConfig(config.id)" title="测试连接">
+                                                                    <i class="fas fa-plug"></i>
+                                                                </button>
+                                                                <button class="btn btn-sm btn-warning action-btn" @click="editMqttConfig(config)" title="编辑配置">
+                                                                    <i class="fas fa-edit"></i>
+                                                                </button>
+                                                                <button class="btn btn-sm btn-danger action-btn" @click="deleteMqttConfig(config.id)" title="删除配置">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -811,11 +1296,32 @@ async def read_root():
                     const currentViewIcon = ref('fas fa-server');
                     const devices = ref([]);
                     const sensors = ref([]);
+                    const mqttConfigs = ref([]);
                     const editingDevice = ref(null);
                     const newDevice = ref({
                         name: '',
                         device_type: '',
                         location: ''
+                    });
+                    const editingMqttConfig = ref(null);
+                    const showAdvancedOptions = ref(false);
+                    const newMqttConfig = ref({
+                        name: '',
+                        server: '172.16.208.176',
+                        port: 18883,
+                        username: 'qxy1',
+                        password: '5686670',
+                        client_id: 'python_client',
+                        keepalive: 60,
+                        timeout: 10,
+                        use_tls: false,
+                        ca_certs: null,
+                        certfile: null,
+                        keyfile: null,
+                        will_topic: 'clients/python_client_status',
+                        will_payload: 'Client is offline',
+                        will_qos: 1,
+                        is_active: false
                     });
                     
                     // 获取设备和传感器数据
@@ -838,6 +1344,18 @@ async def read_root():
                         } catch (error) {
                             console.error('获取传感器数据失败:', error);
                             sensors.value = [];
+                        }
+                    };
+                    
+                    // 获取MQTT配置数据
+                    const fetchMqttConfigs = async () => {
+                        try {
+                            const response = await fetch('/api/mqtt-configs');
+                            const data = await response.json();
+                            mqttConfigs.value = Array.isArray(data) ? data : [];
+                        } catch (error) {
+                            console.error('获取MQTT配置数据失败:', error);
+                            mqttConfigs.value = [];
                         }
                     };
                     
@@ -981,11 +1499,172 @@ async def read_root():
                         editingDevice.value = null;
                     };
                     
+                    // MQTT配置相关函数
+                    const addMqttConfig = async () => {
+                        try {
+                            const response = await fetch('/api/mqtt-configs', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(newMqttConfig.value)
+                            });
+                            
+                            if (response.ok) {
+                                await fetchMqttConfigs();
+                                resetMqttForm();
+                                alert('MQTT配置添加成功');
+                            } else {
+                                const errorData = await response.json();
+                                alert('添加MQTT配置失败: ' + errorData.message);
+                            }
+                        } catch (error) {
+                            console.error('添加MQTT配置失败:', error);
+                            alert('添加MQTT配置失败');
+                        }
+                    };
+                    
+                    const updateMqttConfig = async () => {
+                        try {
+                            const response = await fetch(`/api/mqtt-configs/${editingMqttConfig.value.id}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(newMqttConfig.value)
+                            });
+                            
+                            if (response.ok) {
+                                await fetchMqttConfigs();
+                                resetMqttForm();
+                                alert('MQTT配置更新成功');
+                            } else {
+                                const errorData = await response.json();
+                                alert('更新MQTT配置失败: ' + errorData.message);
+                            }
+                        } catch (error) {
+                            console.error('更新MQTT配置失败:', error);
+                            alert('更新MQTT配置失败');
+                        }
+                    };
+                    
+                    const deleteMqttConfig = async (configId) => {
+                        if (!confirm('确定要删除这个MQTT配置吗？此操作不可撤销！')) {
+                            return;
+                        }
+                        
+                        try {
+                            const response = await fetch(`/api/mqtt-configs/${configId}`, {
+                                method: 'DELETE'
+                            });
+                            
+                            if (response.ok) {
+                                mqttConfigs.value = mqttConfigs.value.filter(config => config.id !== configId);
+                                alert('MQTT配置删除成功');
+                            } else {
+                                const errorData = await response.json();
+                                alert('删除MQTT配置失败: ' + errorData.message);
+                            }
+                        } catch (error) {
+                            console.error('删除MQTT配置失败:', error);
+                            alert('删除MQTT配置失败');
+                        }
+                    };
+                    
+                    const testMqttConfig = async (configId) => {
+                        try {
+                            const response = await fetch(`/api/mqtt-configs/${configId}/test`, {
+                                method: 'POST'
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                alert('MQTT连接测试成功: ' + data.message);
+                            } else {
+                                const errorData = await response.json();
+                                alert('MQTT连接测试失败: ' + errorData.message);
+                            }
+                        } catch (error) {
+                            console.error('MQTT连接测试失败:', error);
+                            alert('MQTT连接测试失败: ' + error.message);
+                        }
+                    };
+                    
+                    const activateMqttConfig = async (configId) => {
+                        if (!confirm('确定要激活这个MQTT配置吗？这将停用当前激活的配置。')) {
+                            return;
+                        }
+                        
+                        try {
+                            const response = await fetch(`/api/mqtt-configs/${configId}/activate`, {
+                                method: 'POST'
+                            });
+                            
+                            if (response.ok) {
+                                await fetchMqttConfigs();
+                                alert('MQTT配置激活成功');
+                            } else {
+                                const errorData = await response.json();
+                                alert('激活MQTT配置失败: ' + errorData.message);
+                            }
+                        } catch (error) {
+                            console.error('激活MQTT配置失败:', error);
+                            alert('激活MQTT配置失败: ' + error.message);
+                        }
+                    };
+                    
+                    const editMqttConfig = (config) => {
+                        editingMqttConfig.value = { ...config };
+                        // 复制配置到newMqttConfig
+                        Object.assign(newMqttConfig.value, config);
+                    };
+                    
+                    const saveMqttConfig = () => {
+                        if (!newMqttConfig.value.name) {
+                            alert('请填写配置名称');
+                            return;
+                        }
+                        
+                        if (editingMqttConfig.value) {
+                            updateMqttConfig();
+                        } else {
+                            addMqttConfig();
+                        }
+                    };
+                    
+                    const cancelMqttEdit = () => {
+                        resetMqttForm();
+                    };
+                    
+                    const resetMqttForm = () => {
+                        newMqttConfig.value = {
+                            name: '',
+                            server: '172.16.208.176',
+                            port: 18883,
+                            username: 'qxy1',
+                            password: '5686670',
+                            client_id: 'python_client',
+                            keepalive: 60,
+                            timeout: 10,
+                            use_tls: false,
+                            ca_certs: null,
+                            certfile: null,
+                            keyfile: null,
+                            will_topic: 'clients/python_client_status',
+                            will_payload: 'Client is offline',
+                            will_qos: 1,
+                            is_active: false
+                        };
+                        editingMqttConfig.value = null;
+                    };
+                    
                     // 更改视图
                     const changeView = (view) => {
                         currentView.value = view;
                         if (view === 'sensors') {
                             fetchSensors(); // 在传感器监控视图中获取传感器数据
+                        } else if (view === 'settings') {
+                            fetchMqttConfigs(); // 在系统设置视图中获取MQTT配置数据
                         }
                         switch(view) {
                             case 'dashboard':
@@ -1014,6 +1693,7 @@ async def read_root():
                     onMounted(() => {
                         fetchDevices(); // 初始获取设备数据
                         fetchSensors(); // 初始获取传感器数据
+                        fetchMqttConfigs(); // 初始获取MQTT配置数据
                     });
                     
                     return {
@@ -1022,8 +1702,12 @@ async def read_root():
                         currentViewIcon,
                         devices,
                         sensors,
+                        mqttConfigs,
                         editingDevice,
                         newDevice,
+                        editingMqttConfig,
+                        newMqttConfig,
+                        showAdvancedOptions,
                         onlineDevicesCount,
                         offlineDevicesCount,
                         sensorsCount,
@@ -1032,7 +1716,15 @@ async def read_root():
                         deleteDevice,
                         editDevice,
                         saveDevice,
-                        cancelEdit
+                        cancelEdit,
+                        addMqttConfig,
+                        updateMqttConfig,
+                        deleteMqttConfig,
+                        testMqttConfig,
+                        activateMqttConfig,
+                        editMqttConfig,
+                        saveMqttConfig,
+                        cancelMqttEdit
                     };
                 }
             }).mount('#app');
