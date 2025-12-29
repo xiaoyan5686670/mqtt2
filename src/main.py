@@ -5,12 +5,20 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 import asyncio
 import random
+import socket
 from pathlib import Path
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import ConfigDict
+
+
+# 为Windows系统设置兼容的事件循环策略
+import sys
+if sys.platform == "win32":
+    # 使用SelectorEventLoop而不是ProactorEventLoop，更适合网络操作
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 app = FastAPI(title="安阳工学院IOT管理系统")
@@ -549,25 +557,28 @@ async def test_mqtt_connection(config_id: int):
         if not db_config:
             return JSONResponse(status_code=404, content={"message": "配置未找到"})
         
-        # 检查是否为内网IP地址，如果是则返回连接失败
-        import ipaddress
-        is_private_ip = False
+        # 使用socket进行TCP连接测试，验证服务器和端口是否可达
         try:
-            ip = ipaddress.ip_address(db_config.server)
-            is_private_ip = ip.is_private  # 内网IP地址
-        except ValueError:
-            # 如果不是有效的IP地址（例如域名），继续测试
-            pass
-        
-        if is_private_ip:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(db_config.timeout)
+                result = sock.connect_ex((db_config.server, db_config.port))
+                
+                if result != 0:
+                    return JSONResponse(status_code=500, content={
+                        "message": f"连接测试失败: 无法连接到 {db_config.server}:{db_config.port}",
+                        "config_name": db_config.name
+                    })
+        except Exception as e:
             return JSONResponse(status_code=500, content={
-                "message": f"连接测试失败: 无法连接到内网IP地址 {db_config.server}，因为当前网络环境无法访问内网地址",
+                "message": f"连接测试失败: {str(e)}",
                 "config_name": db_config.name
             })
         
-        # 对于外网地址，也返回失败以模拟真实网络环境
-        return JSONResponse(status_code=500, content={
-            "message": f"连接测试失败: 无法连接到服务器 {db_config.server}:{db_config.port}，因为当前没有可用的MQTT代理",
+        # TCP连接成功，现在尝试真正的MQTT连接
+        # 为了解决Windows兼容性问题，我们只验证TCP层面的连通性
+        # 因为实际应用中，如果需要完整MQTT认证，需要正确的用户名密码
+        return JSONResponse(status_code=200, content={
+            "message": "连接测试成功（TCP可达）",
             "config_name": db_config.name
         })
     finally:
