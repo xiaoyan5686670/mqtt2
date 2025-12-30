@@ -592,8 +592,12 @@ Base.metadata.create_all(bind=engine)
 # 创建FastAPI应用
 app = FastAPI()
 
-# 挂载静态文件目录
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
+# 获取当前文件所在目录的路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# 使用绝对路径挂载静态文件目录
+static_dir = os.path.join(current_dir, "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 # 依赖项：获取数据库会话
