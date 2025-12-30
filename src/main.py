@@ -403,8 +403,13 @@ def activate_mqtt_config_in_db(db: Session, config_id: int):
 def init_db_data():
     db = SessionLocal()
     try:
-        # 检查是否有设备数据
-        if db.query(DeviceModel).count() == 0:
+        # 检查数据库是否完全为空（没有任何表的数据）
+        device_count = db.query(DeviceModel).count()
+        sensor_count = db.query(SensorDataModel).count()
+        config_count = db.query(MQTTConfigModel).count()
+        
+        # 只有在所有表都为空时才初始化数据（即第一次运行）
+        if device_count == 0 and sensor_count == 0 and config_count == 0:
             # 添加默认设备
             default_devices = [
                 DeviceModel(name='实验室设备A', device_type='温湿度监测设备', status='在线', location='实验室1'),
@@ -415,8 +420,6 @@ def init_db_data():
                 db.add(device)
             db.commit()
         
-        # 检查是否有传感器数据
-        if db.query(SensorDataModel).count() == 0:
             # 为设备添加默认传感器
             for device in default_devices:
                 # 重新获取设备以获取其ID
