@@ -982,18 +982,55 @@ async def get_device_sensors(device_id: int):
 
 # 添加历史数据API
 @app.get("/api/devices/{device_id}/history", response_model=List[Dict])
-async def get_device_history(device_id: int, sensor_type: str, hours: int = 24):
-    # 模拟生成历史数据
-    history = []
-    now = datetime.now()
-    for i in range(hours * 4):  # 每15分钟一个数据点
-        timestamp = now - timedelta(minutes=i*15)
-        value = round(random.uniform(20, 30), 1)
-        history.append({
-            "timestamp": timestamp.isoformat(),
-            "value": value
-        })
-    return history
+async def get_device_history(device_id: int):
+    db = SessionLocal()
+    try:
+        # 获取设备的历史传感器数据
+        history = get_device_history_from_db(db, device_id)
+        return [jsonable_encoder(h) for h in history]
+    finally:
+        db.close()
+
+
+@app.get("/api/realtime-sensors")
+async def get_realtime_sensors():
+    """获取实时传感器数据"""
+    db = SessionLocal()
+    try:
+        # 获取所有传感器的最新数据
+        all_sensors = get_all_sensors_from_db(db)
+        
+        # 按设备分组
+        sensors_by_device = {}
+        for sensor in all_sensors:
+            if sensor.device_id not in sensors_by_device:
+                sensors_by_device[sensor.device_id] = []
+            sensors_by_device[sensor.device_id].append(sensor)
+        
+        # 构造返回数据
+        result = []
+        for device_id, sensors in sensors_by_device.items():
+            device_data = {
+                'device_id': device_id,
+                'sensors': []
+            }
+            
+            for sensor in sensors:
+                sensor_data = {
+                    'id': sensor.id,
+                    'type': sensor.type,
+                    'value': sensor.value,
+                    'unit': sensor.unit,
+                    'timestamp': sensor.timestamp,
+                    'alert_status': sensor.alert_status
+                }
+                device_data['sensors'].append(sensor_data)
+            
+            result.append(device_data)
+        
+        return result
+    finally:
+        db.close()
 
 
 # 更新设备数据的模拟函数
@@ -1016,3 +1053,16 @@ async def startup_event():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+def get_device_history_from_db(db: Session, device_id: int) -> List[SensorDataModel]:
+    """获取设备的历史传感器数据"""
+    # 获取设备的传感器数据，按时间倒序排列，限制为最近100条
+    return db.query(SensorDataModel).filter(
+        SensorDataModel.device_id == device_id
+    ).order_by(SensorDataModel.timestamp.desc()).limit(100).all()
+
+
+def get_all_sensors_from_db(db: Session) -> List[SensorDataModel]:
+    """获取所有传感器数据"""
+    return db.query(SensorDataModel).all()

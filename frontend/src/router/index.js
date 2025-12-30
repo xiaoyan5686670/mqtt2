@@ -5,6 +5,7 @@ import DeviceDetail from '../views/DeviceDetail.vue'
 import DeviceEdit from '../views/DeviceEdit.vue'
 import MqttConfig from '../views/MqttConfig.vue'
 import TopicConfig from '../views/TopicConfig.vue'
+import RealTimeData from '../views/RealTimeData.vue'
 import Login from '../views/Login.vue'
 
 const routes = [
@@ -43,6 +44,11 @@ const routes = [
     name: 'DeviceEdit',
     component: DeviceEdit,
     props: true
+  },
+  {
+    path: '/realtime-data',
+    name: 'RealTimeData',
+    component: RealTimeData
   },
   {
     path: '/mqtt-config',
