@@ -703,7 +703,7 @@ async def test_mqtt_config(config_id: int):
         # 这里我们模拟成功
         return JSONResponse(status_code=200, content={"message": f"配置ID {config_id} 连接测试成功"})
     except Exception as e:
-        return JSONResponse(status_code=400, content={"message": f"连接测试失败: {str(e)}")
+        return JSONResponse(status_code=400, content={"message": f"连接测试失败: {str(e)}"})
 
 
 # 主题配置相关API
