@@ -119,6 +119,62 @@ class TopicConfigModel(Base):
 Base.metadata.create_all(bind=engine)
 
 
+def migrate_database():
+    """数据库迁移函数，处理新增字段"""
+    import sqlite3
+    from sqlalchemy import text
+    
+    # 连接数据库
+    db_conn = sqlite3.connect("iot_system.db")
+    cursor = db_conn.cursor()
+    
+    # 检查mqtt_config_id列是否存在
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    if "mqtt_config_id" not in columns:
+        # 由于SQLite不支持直接添加列，我们需要重新创建表
+        # 1. 重命名原表
+        cursor.execute("ALTER TABLE devices RENAME TO devices_backup")
+        
+        # 2. 创建新表（包含新列）
+        cursor.execute("""
+            CREATE TABLE devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR,
+                device_type VARCHAR,
+                status VARCHAR,
+                location VARCHAR,
+                mqtt_config_id INTEGER,
+                topic_config_id INTEGER
+            )
+        """)
+        
+        # 3. 将数据从备份表复制到新表
+        cursor.execute("""
+            INSERT INTO devices (id, name, device_type, status, location)
+            SELECT id, name, device_type, status, location
+            FROM devices_backup
+        """)
+        
+        # 4. 删除备份表
+        cursor.execute("DROP TABLE devices_backup")
+        
+        # 提交更改
+        db_conn.commit()
+        print("数据库迁移完成：已添加mqtt_config_id和topic_config_id字段")
+    
+    if "topic_config_id" not in columns:
+        print("topic_config_id字段也已添加")
+    
+    # 关闭连接
+    db_conn.close()
+
+
+# 执行数据库迁移
+migrate_database()
+
+
 class SensorData(BaseModel):
     id: int
     type: str
