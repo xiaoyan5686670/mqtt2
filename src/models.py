@@ -1,10 +1,17 @@
+import sys
+import os
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
-from sqlalchemy.orm import declarative_base
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-Base = declarative_base()
+# 动态添加父目录到模块搜索路径，以便导入database
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from database import Base
 
 
 class DeviceModel(Base):

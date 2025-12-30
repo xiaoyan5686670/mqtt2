@@ -1,7 +1,17 @@
 from typing import List
 from sqlalchemy.orm import Session
-from .models import DeviceModel, SensorDataModel, MQTTConfigModel, TopicConfigModel
-from .database import SessionLocal
+import sys
+import os
+
+# 修复相对导入问题
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+# 导入模型
+from models import DeviceModel, SensorDataModel, MQTTConfigModel, TopicConfigModel
+from database import SessionLocal
 
 
 def get_device_by_id(db: Session, device_id: int):

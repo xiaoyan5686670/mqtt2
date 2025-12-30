@@ -4,9 +4,18 @@ import threading
 import re
 from datetime import datetime
 from sqlalchemy.orm import Session
-from .database import SessionLocal
-from .models import DeviceModel, SensorDataModel
-from .config_service import get_active_mqtt_config, get_active_topic_config
+import sys
+import os
+
+# 修复相对导入问题
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from database import SessionLocal
+from models import DeviceModel, SensorDataModel
+from config_service import get_active_mqtt_config, get_active_topic_config
 
 
 class MQTTService:

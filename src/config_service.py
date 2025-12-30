@@ -1,5 +1,14 @@
+import sys
+import os
+
+# 修复相对导入问题
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from models import MQTTConfigModel, TopicConfigModel
 from sqlalchemy.orm import Session
-from .models import MQTTConfigModel, TopicConfigModel
 
 
 def get_active_mqtt_config(db: Session):
