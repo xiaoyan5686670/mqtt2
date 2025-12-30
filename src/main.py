@@ -175,6 +175,11 @@ def migrate_database():
 migrate_database()
 
 
+# 启动时启动MQTT客户端
+from .mqtt_handler import start_mqtt_client
+start_mqtt_client()
+
+
 class SensorData(BaseModel):
     id: int
     type: str
@@ -1033,6 +1038,47 @@ async def get_realtime_sensors():
         db.close()
 
 
+@app.get("/api/latest-sensors")
+async def get_latest_sensors():
+    """获取最新的传感器数据（仅返回最新记录，用于实时显示）"""
+    db = SessionLocal()
+    try:
+        # 获取所有设备的最新传感器数据
+        latest_sensors = get_latest_sensors_from_db(db)
+        
+        # 按设备分组
+        sensors_by_device = {}
+        for sensor in latest_sensors:
+            if sensor.device_id not in sensors_by_device:
+                sensors_by_device[sensor.device_id] = []
+            sensors_by_device[sensor.device_id].append(sensor)
+        
+        # 构造返回数据
+        result = []
+        for device_id, sensors in sensors_by_device.items():
+            device_data = {
+                'device_id': device_id,
+                'sensors': []
+            }
+            
+            for sensor in sensors:
+                sensor_data = {
+                    'id': sensor.id,
+                    'type': sensor.type,
+                    'value': sensor.value,
+                    'unit': sensor.unit,
+                    'timestamp': sensor.timestamp,
+                    'alert_status': sensor.alert_status
+                }
+                device_data['sensors'].append(sensor_data)
+            
+            result.append(device_data)
+        
+        return result
+    finally:
+        db.close()
+
+
 # 更新设备数据的模拟函数
 async def update_device_data():
     while True:
@@ -1066,3 +1112,22 @@ def get_device_history_from_db(db: Session, device_id: int) -> List[SensorDataMo
 def get_all_sensors_from_db(db: Session) -> List[SensorDataModel]:
     """获取所有传感器数据"""
     return db.query(SensorDataModel).all()
+
+
+def get_latest_sensors_from_db(db: Session) -> List[SensorDataModel]:
+    """获取每个传感器类型的最新数据"""
+    # 获取所有唯一的传感器类型
+    unique_sensor_types = db.query(SensorDataModel.type).distinct().all()
+    
+    latest_sensors = []
+    
+    for sensor_type, in unique_sensor_types:
+        # 为每个传感器类型获取最新的记录
+        latest_sensor = db.query(SensorDataModel).filter(
+            SensorDataModel.type == sensor_type
+        ).order_by(SensorDataModel.timestamp.desc()).first()
+        
+        if latest_sensor:
+            latest_sensors.append(latest_sensor)
+    
+    return latest_sensors

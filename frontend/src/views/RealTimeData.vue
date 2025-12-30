@@ -282,16 +282,32 @@ export default {
     // 获取实时数据
     const fetchRealTimeData = async () => {
       try {
-        // 这里需要一个API来获取实时传感器数据
-        // 暂时使用模拟数据，实际应用中应从API获取
-        const mockData = `stm32/1 Temperature1: ${Math.random() * 10 + 20}.10 C, Humidity1: ${Math.random() * 20 + 40}.10 %\nTemperature2: ${Math.random() * 10 + 20}.80 C, Humidity2: ${Math.random() * 20 + 40}.40 %\nRelay Status: ${Math.round(Math.random())}\nPB8 Level: ${Math.round(Math.random())}`
+        // 获取最新的传感器数据
+        const response = await axios.get('/api/latest-sensors')
+        const sensors = response.data
         
-        // 在实际应用中，应使用如下API调用：
-        // const response = await axios.get('/api/realtime-sensors')
-        // const rawData = response.data
+        // 查找包含所需传感器数据的设备数据
+        let temp1 = 0, hum1 = 0, temp2 = 0, hum2 = 0, relay = 0, pb8 = 0
         
-        const parsedData = parseSensorData(mockData)
-        sensorData.value = parsedData
+        for (const deviceData of sensors) {
+          for (const sensor of deviceData.sensors) {
+            if (sensor.type === 'Temperature1') {
+              temp1 = sensor.value
+            } else if (sensor.type === 'Humidity1') {
+              hum1 = sensor.value
+            } else if (sensor.type === 'Temperature2') {
+              temp2 = sensor.value
+            } else if (sensor.type === 'Humidity2') {
+              hum2 = sensor.value
+            } else if (sensor.type === 'Relay Status') {
+              relay = sensor.value
+            } else if (sensor.type === 'PB8 Level') {
+              pb8 = sensor.value
+            }
+          }
+        }
+        
+        sensorData.value = { temp1, hum1, temp2, hum2, relay, pb8 }
         
         // 更新图表
         updateCharts()
