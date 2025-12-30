@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from '../views/Dashboard.vue'
 import DeviceList from '../views/DeviceList.vue'
 import DeviceDetail from '../views/DeviceDetail.vue'
+import DeviceEdit from '../views/DeviceEdit.vue'
 import MqttConfig from '../views/MqttConfig.vue'
 import TopicConfig from '../views/TopicConfig.vue'
 import Login from '../views/Login.vue'
@@ -30,6 +31,17 @@ const routes = [
     path: '/devices/:id',
     name: 'DeviceDetail',
     component: DeviceDetail,
+    props: true
+  },
+  {
+    path: '/devices/new',
+    name: 'DeviceNew',
+    component: DeviceEdit
+  },
+  {
+    path: '/devices/:id/edit',
+    name: 'DeviceEdit',
+    component: DeviceEdit,
     props: true
   },
   {

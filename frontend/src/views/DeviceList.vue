@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h2>设备列表</h2>
-      <button class="btn btn-primary">添加设备</button>
+      <button class="btn btn-primary" @click="addDevice">添加设备</button>
     </div>
 
     <div class="card">
@@ -36,7 +36,9 @@
                   <router-link :to="`/devices/${device.id}`" class="btn btn-sm btn-outline-primary me-1">
                     查看
                   </router-link>
-                  <button class="btn btn-sm btn-outline-secondary me-1">编辑</button>
+                  <router-link :to="`/devices/${device.id}/edit`" class="btn btn-sm btn-outline-secondary me-1">
+                    编辑
+                  </router-link>
                   <button class="btn btn-sm btn-outline-danger" @click="deleteDevice(device.id)">删除</button>
                 </td>
               </tr>
@@ -50,12 +52,14 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 
 export default {
   name: 'DeviceList',
   setup() {
     const devices = ref([])
+    const router = useRouter()
 
     const fetchDevices = async () => {
       try {
@@ -87,6 +91,10 @@ export default {
       }
     }
 
+    const addDevice = () => {
+      router.push('/devices/new')
+    }
+
     const formatDate = (dateString) => {
       if (!dateString) return '未知'
       const date = new Date(dateString)
@@ -100,6 +108,7 @@ export default {
     return {
       devices,
       deleteDevice,
+      addDevice,
       formatDate
     }
   }

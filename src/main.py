@@ -58,6 +58,8 @@ class DeviceModel(Base):
     device_type = Column(String)
     status = Column(String)
     location = Column(String)
+    mqtt_config_id = Column(Integer, nullable=True)  # 关联的MQTT配置ID
+    topic_config_id = Column(Integer, nullable=True)  # 关联的主题配置ID
 
 
 class SensorDataModel(Base):
@@ -136,6 +138,8 @@ class Device(BaseModel):
     device_type: str  # 设备类型
     status: str
     location: str
+    mqtt_config_id: Optional[int] = None  # 关联的MQTT配置ID
+    topic_config_id: Optional[int] = None  # 关联的主题配置ID
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -243,9 +247,12 @@ class TopicConfigUpdate(BaseModel):
 
 
 class DeviceUpdate(BaseModel):
-    name: str
-    device_type: str
-    location: str
+    name: Optional[str] = None
+    device_type: Optional[str] = None
+    status: Optional[str] = None
+    location: Optional[str] = None
+    mqtt_config_id: Optional[int] = None
+    topic_config_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -253,7 +260,10 @@ class DeviceUpdate(BaseModel):
 class DeviceCreate(BaseModel):
     name: str
     device_type: str
-    location: str
+    status: str = "离线"
+    location: str = ""
+    mqtt_config_id: Optional[int] = None
+    topic_config_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -293,7 +303,9 @@ def create_device_in_db(db: Session, device: DeviceCreate) -> DeviceModel:
         name=device.name,
         device_type=device.device_type,
         status="离线",  # 新设备默认离线
-        location=device.location
+        location=device.location,
+        mqtt_config_id=device.mqtt_config_id,
+        topic_config_id=device.topic_config_id
     )
     db.add(db_device)
     db.commit()
@@ -305,9 +317,17 @@ def update_device_in_db(db: Session, device_id: int, device: DeviceUpdate) -> Op
     """更新数据库中的设备"""
     db_device = db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
     if db_device:
-        db_device.name = device.name
-        db_device.device_type = device.device_type
-        db_device.location = device.location
+        if device.name is not None:
+            db_device.name = device.name
+        if device.device_type is not None:
+            db_device.device_type = device.device_type
+        if device.location is not None:
+            db_device.location = device.location
+        if device.mqtt_config_id is not None:
+            db_device.mqtt_config_id = device.mqtt_config_id
+        if device.topic_config_id is not None:
+            db_device.topic_config_id = device.topic_config_id
+        
         db.commit()
         db.refresh(db_device)
         return db_device
