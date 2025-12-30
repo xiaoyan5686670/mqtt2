@@ -3,6 +3,7 @@ import Dashboard from '../views/Dashboard.vue'
 import DeviceList from '../views/DeviceList.vue'
 import DeviceDetail from '../views/DeviceDetail.vue'
 import MqttConfig from '../views/MqttConfig.vue'
+import TopicConfig from '../views/TopicConfig.vue'
 import Login from '../views/Login.vue'
 
 const routes = [
@@ -35,6 +36,11 @@ const routes = [
     path: '/mqtt-config',
     name: 'MqttConfig',
     component: MqttConfig
+  },
+  {
+    path: '/topic-config',
+    name: 'TopicConfig',
+    component: TopicConfig
   }
 ]
 

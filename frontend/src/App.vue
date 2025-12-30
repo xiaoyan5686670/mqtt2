@@ -7,6 +7,7 @@
           <router-link class="nav-link" to="/dashboard">仪表板</router-link>
           <router-link class="nav-link" to="/devices">设备列表</router-link>
           <router-link class="nav-link" to="/mqtt-config">MQTT配置</router-link>
+          <router-link class="nav-link" to="/topic-config">主题配置</router-link>
           <a class="nav-link" href="#" @click="logout">退出</a>
         </div>
       </div>

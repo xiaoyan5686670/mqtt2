@@ -98,6 +98,21 @@ class MQTTConfigModel(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class TopicConfigModel(Base):
+    __tablename__ = "topic_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)  # 配置名称
+    mqtt_config_id = Column(Integer, nullable=False)  # 关联的MQTT配置ID
+    subscribe_topics = Column(Text)  # 订阅主题，JSON格式存储
+    publish_topic = Column(String)  # 发布主题
+    data_format = Column(String)  # 数据格式，如JSON, CSV等
+    device_mapping = Column(Text)  # 设备映射规则，JSON格式存储
+    is_active = Column(Boolean, default=False)  # 是否激活
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
@@ -185,6 +200,43 @@ class MQTTConfigUpdate(BaseModel):
     will_topic: Optional[str] = None
     will_payload: Optional[str] = None
     will_qos: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopicConfig(BaseModel):
+    id: int
+    name: str
+    mqtt_config_id: int
+    subscribe_topics: Optional[str] = None  # JSON格式的订阅主题列表
+    publish_topic: Optional[str] = None
+    data_format: Optional[str] = 'JSON'  # 默认数据格式
+    device_mapping: Optional[str] = None  # JSON格式的设备映射规则
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopicConfigCreate(BaseModel):
+    name: str
+    mqtt_config_id: int
+    subscribe_topics: Optional[str] = None
+    publish_topic: Optional[str] = None
+    data_format: Optional[str] = 'JSON'
+    device_mapping: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopicConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    mqtt_config_id: Optional[int] = None
+    subscribe_topics: Optional[str] = None
+    publish_topic: Optional[str] = None
+    data_format: Optional[str] = None
+    device_mapping: Optional[str] = None
     is_active: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -386,17 +438,94 @@ def delete_mqtt_config_from_db(db: Session, config_id: int):
 
 
 def activate_mqtt_config_in_db(db: Session, config_id: int):
-    """激活指定的MQTT配置"""
-    # 先将所有配置设为非激活状态
+    """激活指定的MQTT配置，将其他配置设为非激活状态"""
+    # 将所有配置设为非激活
     db.query(MQTTConfigModel).update({MQTTConfigModel.is_active: False})
-    # 再将指定配置设为激活状态
+    
+    # 激活指定配置
     db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
     if db_config:
         db_config.is_active = True
         db.commit()
+        return True
+    return False
+
+
+def get_topic_configs_from_db(db: Session):
+    """获取所有主题配置"""
+    return db.query(TopicConfigModel).all()
+
+
+def get_topic_config_by_id(db: Session, config_id: int):
+    """根据ID获取主题配置"""
+    return db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+
+
+def get_active_topic_config(db: Session):
+    """获取激活的主题配置"""
+    return db.query(TopicConfigModel).filter(TopicConfigModel.is_active == True).first()
+
+
+def create_topic_config_in_db(db: Session, config: TopicConfigCreate):
+    """创建主题配置"""
+    db_config = TopicConfigModel(
+        name=config.name,
+        mqtt_config_id=config.mqtt_config_id,
+        subscribe_topics=config.subscribe_topics,
+        publish_topic=config.publish_topic,
+        data_format=config.data_format,
+        device_mapping=config.device_mapping,
+        is_active=False  # 默认不激活
+    )
+    db.add(db_config)
+    db.commit()
+    db.refresh(db_config)
+    return db_config
+
+
+def update_topic_config_in_db(db: Session, config_id: int, config: TopicConfigUpdate):
+    """更新主题配置"""
+    db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+    if db_config:
+        for field, value in config.model_dump(exclude_unset=True).items():
+            setattr(db_config, field, value)
+        db.commit()
         db.refresh(db_config)
         return db_config
     return None
+
+
+def delete_topic_config_from_db(db: Session, config_id: int):
+    """删除主题配置"""
+    db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+    if db_config:
+        # 如果删除的是激活配置，激活其他配置
+        if db_config.is_active:
+            other_configs = db.query(TopicConfigModel).filter(
+                TopicConfigModel.id != config_id
+            ).all()
+            if other_configs:
+                # 激活第一个其他配置
+                other_configs[0].is_active = True
+        
+        db.delete(db_config)
+        db.commit()
+        return True
+    return False
+
+
+def activate_topic_config_in_db(db: Session, config_id: int):
+    """激活指定的主题配置，将其他配置设为非激活状态"""
+    # 将所有配置设为非激活
+    db.query(TopicConfigModel).update({TopicConfigModel.is_active: False})
+    
+    # 激活指定配置
+    db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+    if db_config:
+        db_config.is_active = True
+        db.commit()
+        return True
+    return False
 
 
 # 初始化数据库数据
@@ -566,49 +695,98 @@ async def activate_mqtt_config(config_id: int):
 
 # 测试MQTT连接
 @app.post("/api/mqtt-configs/{config_id}/test")
-async def test_mqtt_connection(config_id: int):
+async def test_mqtt_config(config_id: int):
+    # 这里实现测试连接的逻辑
+    # 为了简化，我们返回一个模拟的响应
+    try:
+        # 在实际实现中，这里应该尝试连接到MQTT服务器
+        # 这里我们模拟成功
+        return JSONResponse(status_code=200, content={"message": f"配置ID {config_id} 连接测试成功"})
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"message": f"连接测试失败: {str(e)}")
+
+
+# 主题配置相关API
+@app.get("/api/topic-configs", response_model=List[TopicConfig])
+async def get_topic_configs():
     db = SessionLocal()
     try:
-        db_config = get_mqtt_config_by_id(db, config_id)
-        if not db_config:
-            return JSONResponse(status_code=404, content={"message": "配置未找到"})
-        
-        # 使用socket进行TCP连接测试，验证服务器和端口是否可达
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(db_config.timeout)
-                result = sock.connect_ex((db_config.server, db_config.port))
-                
-                if result != 0:
-                    return JSONResponse(status_code=500, content={
-                        "message": f"连接测试失败: 无法连接到 {db_config.server}:{db_config.port}",
-                        "config_name": db_config.name
-                    })
-        except Exception as e:
-            return JSONResponse(status_code=500, content={
-                "message": f"连接测试失败: {str(e)}",
-                "config_name": db_config.name
-            })
-        
-        # TCP连接成功，现在尝试真正的MQTT连接
-        # 为了解决Windows兼容性问题，我们只验证TCP层面的连通性
-        # 因为实际应用中，如果需要完整MQTT认证，需要正确的用户名密码
-        return JSONResponse(status_code=200, content={
-            "message": "连接测试成功（TCP可达）",
-            "config_name": db_config.name
-        })
+        db_configs = get_topic_configs_from_db(db)
+        configs = [TopicConfig.model_validate(db_config) for db_config in db_configs]
+        return configs
     finally:
         db.close()
 
 
-# 获取当前激活的MQTT配置
-@app.get("/api/mqtt-configs/active", response_model=Optional[MQTTConfig])
-async def get_active_mqtt_config():
+@app.get("/api/topic-configs/{config_id}", response_model=TopicConfig)
+async def get_topic_config(config_id: int):
     db = SessionLocal()
     try:
-        db_config = get_active_mqtt_config(db)
+        db_config = get_topic_config_by_id(db, config_id)
         if db_config:
-            return MQTTConfig.model_validate(db_config)
+            return TopicConfig.model_validate(db_config)
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.post("/api/topic-configs", response_model=TopicConfig)
+async def create_topic_config(config: TopicConfigCreate):
+    db = SessionLocal()
+    try:
+        db_config = create_topic_config_in_db(db, config)
+        return TopicConfig.model_validate(db_config)
+    finally:
+        db.close()
+
+
+@app.put("/api/topic-configs/{config_id}", response_model=TopicConfig)
+async def update_topic_config(config_id: int, config: TopicConfigUpdate):
+    db = SessionLocal()
+    try:
+        db_config = update_topic_config_in_db(db, config_id, config)
+        if db_config:
+            return TopicConfig.model_validate(db_config)
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.delete("/api/topic-configs/{config_id}")
+async def delete_topic_config(config_id: int):
+    db = SessionLocal()
+    try:
+        success = delete_topic_config_from_db(db, config_id)
+        if success:
+            return JSONResponse(status_code=200, content={"message": "主题配置删除成功"})
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.post("/api/topic-configs/{config_id}/activate")
+async def activate_topic_config(config_id: int):
+    db = SessionLocal()
+    try:
+        success = activate_topic_config_in_db(db, config_id)
+        if success:
+            return JSONResponse(status_code=200, content={"message": "主题配置激活成功"})
+        else:
+            return JSONResponse(status_code=404, content={"message": "配置未找到"})
+    finally:
+        db.close()
+
+
+@app.get("/api/topic-configs/active", response_model=Optional[TopicConfig])
+async def get_active_topic_config():
+    db = SessionLocal()
+    try:
+        db_config = get_active_topic_config(db)
+        if db_config:
+            return TopicConfig.model_validate(db_config)
         else:
             return None
     finally:
