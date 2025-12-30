@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import asyncio
@@ -14,6 +15,9 @@ from sqlalchemy.orm import sessionmaker, Session
 from pydantic import ConfigDict
 
 
+# 添加CORS支持
+from fastapi.middleware.cors import CORSMiddleware
+
 # 为Windows系统设置兼容的事件循环策略
 import sys
 if sys.platform == "win32":
@@ -22,6 +26,15 @@ if sys.platform == "win32":
 
 
 app = FastAPI(title="安阳工学院IOT管理系统")
+
+# 添加CORS中间件，允许跨域请求
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 在生产环境中应指定具体域名，而不是使用"*"
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 获取当前文件的目录，然后构建静态目录的路径
 current_dir = Path(__file__).parent
@@ -610,7 +623,7 @@ async def read_root():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>安阳工学院IOT管理系统</title>
         <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="/static/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <style>
             body {
@@ -1469,11 +1482,19 @@ async def read_root():
                                 sensors.value = sensors.value.filter(sensor => sensor.device_id !== deviceId);
                                 alert('设备删除成功');
                             } else {
-                                alert('删除设备失败');
+                                // 尝试解析错误信息，如果失败则使用默认消息
+                                let errorMessage = '删除设备失败';
+                                try {
+                                    const result = await response.json();
+                                    errorMessage = result.message || errorMessage;
+                                } catch (e) {
+                                    console.warn('无法解析错误响应:', e);
+                                }
+                                alert(errorMessage);
                             }
                         } catch (error) {
                             console.error('删除设备失败:', error);
-                            alert('删除设备失败');
+                            alert('网络错误：' + error.message);
                         }
                     };
                     
@@ -1526,8 +1547,7 @@ async def read_root():
                                 resetMqttForm();
                                 alert('MQTT配置添加成功');
                             } else {
-                                const errorData = await response.json();
-                                alert('添加MQTT配置失败: ' + errorData.message);
+                                alert('添加MQTT配置失败');
                             }
                         } catch (error) {
                             console.error('添加MQTT配置失败:', error);
@@ -1550,12 +1570,24 @@ async def read_root():
                                 resetMqttForm();
                                 alert('MQTT配置更新成功');
                             } else {
-                                const errorData = await response.json();
-                                alert('更新MQTT配置失败: ' + errorData.message);
+                                alert('更新MQTT配置失败');
                             }
                         } catch (error) {
                             console.error('更新MQTT配置失败:', error);
                             alert('更新MQTT配置失败');
+                        }
+                    };
+                    
+                    const saveMqttConfig = () => {
+                        if (!newMqttConfig.value.name) {
+                            alert('请填写配置名称');
+                            return;
+                        }
+                        
+                        if (editingMqttConfig.value) {
+                            updateMqttConfig();
+                        } else {
+                            addMqttConfig();
                         }
                     };
                     
@@ -1573,12 +1605,33 @@ async def read_root():
                                 mqttConfigs.value = mqttConfigs.value.filter(config => config.id !== configId);
                                 alert('MQTT配置删除成功');
                             } else {
-                                const errorData = await response.json();
-                                alert('删除MQTT配置失败: ' + errorData.message);
+                                alert('删除MQTT配置失败');
                             }
                         } catch (error) {
                             console.error('删除MQTT配置失败:', error);
                             alert('删除MQTT配置失败');
+                        }
+                    };
+                    
+                    const activateMqttConfig = async (configId) => {
+                        try {
+                            const response = await fetch(`/api/mqtt-configs/${configId}/activate`, {
+                                method: 'POST'
+                            });
+                            
+                            if (response.ok) {
+                                const activatedConfig = await response.json();
+                                // 更新配置列表中的激活状态
+                                mqttConfigs.value.forEach(config => {
+                                    config.is_active = (config.id === activatedConfig.id);
+                                });
+                                alert('MQTT配置激活成功');
+                            } else {
+                                alert('激活MQTT配置失败');
+                            }
+                        } catch (error) {
+                            console.error('激活MQTT配置失败:', error);
+                            alert('激活MQTT配置失败');
                         }
                     };
                     
@@ -1589,58 +1642,22 @@ async def read_root():
                             });
                             
                             if (response.ok) {
-                                const data = await response.json();
-                                alert('MQTT连接测试成功: ' + data.message);
+                                const result = await response.json();
+                                alert(`连接测试成功: ${result.message}`);
                             } else {
-                                const errorData = await response.json();
-                                alert('MQTT连接测试失败: ' + errorData.message);
+                                const result = await response.json();
+                                alert(`连接测试失败: ${result.message}`);
                             }
                         } catch (error) {
-                            console.error('MQTT连接测试失败:', error);
-                            alert('MQTT连接测试失败: ' + error.message);
-                        }
-                    };
-                    
-                    const activateMqttConfig = async (configId) => {
-                        if (!confirm('确定要激活这个MQTT配置吗？这将停用当前激活的配置。')) {
-                            return;
-                        }
-                        
-                        try {
-                            const response = await fetch(`/api/mqtt-configs/${configId}/activate`, {
-                                method: 'POST'
-                            });
-                            
-                            if (response.ok) {
-                                await fetchMqttConfigs();
-                                alert('MQTT配置激活成功');
-                            } else {
-                                const errorData = await response.json();
-                                alert('激活MQTT配置失败: ' + errorData.message);
-                            }
-                        } catch (error) {
-                            console.error('激活MQTT配置失败:', error);
-                            alert('激活MQTT配置失败: ' + error.message);
+                            console.error('测试MQTT配置失败:', error);
+                            alert('连接测试失败');
                         }
                     };
                     
                     const editMqttConfig = (config) => {
                         editingMqttConfig.value = { ...config };
-                        // 复制配置到newMqttConfig
+                        // 复制配置值到newMqttConfig
                         Object.assign(newMqttConfig.value, config);
-                    };
-                    
-                    const saveMqttConfig = () => {
-                        if (!newMqttConfig.value.name) {
-                            alert('请填写配置名称');
-                            return;
-                        }
-                        
-                        if (editingMqttConfig.value) {
-                            updateMqttConfig();
-                        } else {
-                            addMqttConfig();
-                        }
                     };
                     
                     const cancelMqttEdit = () => {
@@ -1667,16 +1684,12 @@ async def read_root():
                             is_active: false
                         };
                         editingMqttConfig.value = null;
+                        showAdvancedOptions.value = false;
                     };
                     
-                    // 更改视图
+                    // 切换视图
                     const changeView = (view) => {
                         currentView.value = view;
-                        if (view === 'sensors') {
-                            fetchSensors(); // 在传感器监控视图中获取传感器数据
-                        } else if (view === 'settings') {
-                            fetchMqttConfigs(); // 在系统设置视图中获取MQTT配置数据
-                        }
                         switch(view) {
                             case 'dashboard':
                                 currentViewTitle.value = '设备管理';
@@ -1701,10 +1714,11 @@ async def read_root():
                         }
                     };
                     
-                    onMounted(() => {
-                        fetchDevices(); // 初始获取设备数据
-                        fetchSensors(); // 初始获取传感器数据
-                        fetchMqttConfigs(); // 初始获取MQTT配置数据
+                    // 初始化数据
+                    onMounted(async () => {
+                        await fetchDevices();
+                        await fetchSensors();
+                        await fetchMqttConfigs();
                     });
                     
                     return {
@@ -1717,25 +1731,25 @@ async def read_root():
                         editingDevice,
                         newDevice,
                         editingMqttConfig,
-                        newMqttConfig,
                         showAdvancedOptions,
+                        newMqttConfig,
+                        getDeviceSensors,
                         onlineDevicesCount,
                         offlineDevicesCount,
                         sensorsCount,
-                        getDeviceSensors,
-                        changeView,
                         deleteDevice,
                         editDevice,
                         saveDevice,
                         cancelEdit,
-                        addMqttConfig,
-                        updateMqttConfig,
+                        addDevice,
+                        updateDevice,
                         deleteMqttConfig,
-                        testMqttConfig,
                         activateMqttConfig,
+                        testMqttConfig,
                         editMqttConfig,
                         saveMqttConfig,
-                        cancelMqttEdit
+                        cancelMqttEdit,
+                        changeView
                     };
                 }
             }).mount('#app');
@@ -1754,6 +1768,19 @@ async def get_devices():
         db_devices = get_devices_from_db(db)
         devices = [Device.model_validate(db_device) for db_device in db_devices]
         return devices
+    finally:
+        db.close()
+
+
+@app.get("/api/devices/{device_id}", response_model=Device)
+async def get_device(device_id: int):
+    """获取单个设备"""
+    db = SessionLocal()
+    try:
+        db_device = db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
+        if db_device is None:
+            raise HTTPException(status_code=404, detail="设备未找到")
+        return Device.model_validate(db_device)
     finally:
         db.close()
 

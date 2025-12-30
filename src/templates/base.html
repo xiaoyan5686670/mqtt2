@@ -4,95 +4,194 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}安阳工学院IOT管理系统{% endblock %}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 使用本地静态文件而不是CDN -->
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
         body {
-            height: 100vh;
-            overflow: hidden;
-        }
-        .header {
-            height: 60px;
-            background-color: #2c3e50;
-            color: white;
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-        }
-        .sidebar {
-            width: 250px;
-            background-color: #ecf0f1;
-            position: fixed;
-            top: 60px;
-            left: 0;
-            bottom: 30px;
-            overflow-y: auto;
-            padding: 15px 0;
-        }
-        .content {
-            margin-left: 250px;
-            margin-top: 60px;
-            padding: 20px;
-            height: calc(100vh - 90px);
-            overflow-y: auto;
-        }
-        .footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 30px;
-            background-color: #2c3e50;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-        }
-        .menu-item {
-            padding: 10px 20px;
-            display: block;
-            text-decoration: none;
-            color: #2c3e50;
-            transition: background-color 0.2s;
-        }
-        .menu-item:hover {
-            background-color: #d6dbdf;
-        }
-        .device-card {
-            margin-bottom: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        .device-header {
             background-color: #f8f9fa;
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
+        }
+        .navbar-brand {
+            font-size: 1.5rem;
             font-weight: bold;
         }
-        .device-content {
+        .sidebar {
+            height: 100vh;
+            position: fixed;
+            top: 56px;
+            background-color: #f8f9fa;
+            padding-top: 1rem;
+            border-right: 1px solid #dee2e6;
+        }
+        .main-content {
+            margin-left: 250px;
+            padding-top: 20px;
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .stats-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        .device-card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            transition: transform 0.2s;
+        }
+        .device-card:hover {
+            transform: translateY(-5px);
+        }
+        .device-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
             padding: 15px;
         }
-        .sensor-data {
-            display: flex;
-            justify-content: space-between;
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
         }
         .status-online {
-            color: green;
+            background-color: #28a745;
         }
         .status-offline {
-            color: red;
+            background-color: #dc3545;
+        }
+        .mqtt-config-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .mqtt-config-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            border-radius: 8px 8px 0 0;
+            padding: 12px 15px;
+            font-weight: bold;
+        }
+        .mqtt-config-body {
+            padding: 15px;
+        }
+        .sensor-chart-container {
+            height: 300px;
+            position: relative;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        .table th {
+            border-top: none;
+        }
+        .table-hover tbody tr:hover {
+            background-color: rgba(0, 0, 0, 0.03);
+        }
+        .btn {
+            border-radius: 5px;
+        }
+        .btn-primary {
+            background-color: #667eea;
+            border-color: #667eea;
+        }
+        .btn-primary:hover {
+            background-color: #5a6fd8;
+            border-color: #5a6fd8;
+        }
+        .nav-tabs .nav-link.active {
+            background-color: #fff;
+            border-color: #dee2e6 #dee2e6 #fff;
         }
     </style>
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
-    {% block body %}{% endblock %}
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    {% block scripts %}{% endblock %}
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-speedometer2 me-2"></i>
+                安阳工学院IOT管理系统
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="bi bi-house-door me-1"></i> 仪表板</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/mqtt-config"><i class="bi bi-gear me-1"></i> MQTT配置</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/device"><i class="bi bi-list me-1"></i> 设备列表</a>
+                    </li>
+                    {% if current_user %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout"><i class="bi bi-box-arrow-right me-1"></i> 退出</a>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/login"><i class="bi bi-box-arrow-in-right me-1"></i> 登录</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            {% if not is_login_page %}
+            <nav class="col-md-2 d-none d-md-block sidebar">
+                <div class="nav flex-column">
+                    <a class="nav-link" href="/">
+                        <i class="bi bi-speedometer2"></i> 仪表板
+                    </a>
+                    <a class="nav-link" href="/device">
+                        <i class="bi bi-list"></i> 设备列表
+                    </a>
+                    <a class="nav-link" href="/mqtt-config">
+                        <i class="bi bi-gear"></i> MQTT配置
+                    </a>
+                </div>
+            </nav>
+            {% endif %}
+            
+            <main class="col-md-10 ms-sm-auto main-content">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- 使用本地静态文件而不是CDN -->
+    <script src="/static/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

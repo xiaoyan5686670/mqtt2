@@ -37,7 +37,7 @@
                     查看
                   </router-link>
                   <button class="btn btn-sm btn-outline-secondary me-1">编辑</button>
-                  <button class="btn btn-sm btn-outline-danger">删除</button>
+                  <button class="btn btn-sm btn-outline-danger" @click="deleteDevice(device.id)">删除</button>
                 </td>
               </tr>
             </tbody>
@@ -66,6 +66,27 @@ export default {
       }
     }
 
+    const deleteDevice = async (deviceId) => {
+      if (!confirm('确定要删除这个设备吗？此操作不可撤销！')) {
+        return;
+      }
+
+      try {
+        const response = await axios.delete(`/api/devices/${deviceId}`)
+        
+        if (response.status === 200) {
+          // 从列表中移除已删除的设备
+          devices.value = devices.value.filter(device => device.id !== deviceId);
+          alert('设备删除成功');
+        } else {
+          alert('删除设备失败');
+        }
+      } catch (error) {
+        console.error('删除设备失败:', error);
+        alert('删除设备失败');
+      }
+    }
+
     const formatDate = (dateString) => {
       if (!dateString) return '未知'
       const date = new Date(dateString)
@@ -78,6 +99,7 @@ export default {
 
     return {
       devices,
+      deleteDevice,
       formatDate
     }
   }

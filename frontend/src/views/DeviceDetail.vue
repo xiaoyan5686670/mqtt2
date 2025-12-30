@@ -18,7 +18,7 @@
           <h3>{{ device.name }}</h3>
           <div>
             <button class="btn btn-sm btn-outline-secondary me-2">编辑</button>
-            <button class="btn btn-sm btn-outline-danger">删除</button>
+            <button class="btn btn-sm btn-outline-danger" @click="deleteDevice">删除</button>
           </div>
         </div>
       </div>
@@ -110,7 +110,7 @@
 
 <script>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import axios from 'axios'
 
@@ -118,6 +118,7 @@ export default {
   name: 'DeviceDetail',
   setup() {
     const route = useRoute()
+    const router = useRouter()
     const device = ref(null)
     const sensorChart = ref(null)
     let chartInstance = null
@@ -129,7 +130,33 @@ export default {
         device.value = response.data
         updateChart()
       } catch (error) {
-        console.error('获取设备详情失败:', error)
+        // 如果设备不存在（404错误），跳转回设备列表
+        if (error.response && error.response.status === 404) {
+          console.warn('设备不存在，跳转回设备列表');
+          router.push('/devices');
+        } else {
+          console.error('获取设备详情失败:', error);
+        }
+      }
+    }
+
+    const deleteDevice = async () => {
+      if (!confirm('确定要删除这个设备吗？此操作不可撤销！')) {
+        return;
+      }
+
+      try {
+        const response = await axios.delete(`/api/devices/${route.params.id}`)
+        
+        if (response.status === 200) {
+          alert('设备删除成功');
+          router.push('/devices'); // 跳转回设备列表页面
+        } else {
+          alert('删除设备失败');
+        }
+      } catch (error) {
+        console.error('删除设备失败:', error);
+        alert('删除设备失败');
       }
     }
 
@@ -207,7 +234,10 @@ export default {
       
       // 设置定时刷新
       refreshInterval = setInterval(() => {
-        fetchDevice()
+        // 只有在设备存在的情况下才刷新
+        if (device.value) {
+          fetchDevice()
+        }
       }, 5000)
     })
 
@@ -223,6 +253,7 @@ export default {
     return {
       device,
       sensorChart,
+      deleteDevice,
       formatDate,
       getSensorPercentage,
       getSensorStatusClass
