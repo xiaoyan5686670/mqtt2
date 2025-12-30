@@ -48,48 +48,9 @@
       </div>
     </div>
 
+    <!-- 传感器数据组件与设备状态概览组件水平对齐 -->
     <div class="row mt-4">
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-header">
-            <h5>设备列表</h5>
-          </div>
-          <div class="card-body">
-            <div class="table-responsive">
-              <table class="table table-striped">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>名称</th>
-                    <th>类型</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="device in devices" :key="device.id">
-                    <td>{{ device.id }}</td>
-                    <td>{{ device.name }}</td>
-                    <td>{{ device.type }}</td>
-                    <td>
-                      <span :class="device.is_online ? 'text-success' : 'text-danger'">
-                        {{ device.is_online ? '在线' : '离线' }}
-                      </span>
-                    </td>
-                    <td>
-                      <router-link :to="`/devices/${device.id}`" class="btn btn-sm btn-outline-primary">
-                        查看详情
-                      </router-link>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-md-6">
+      <div class="col-md-12">
         <div class="card">
           <div class="card-header">
             <h5>传感器数据</h5>
@@ -135,34 +96,61 @@ export default {
       }
     }
 
+    // 获取传感器数据
+    const fetchSensors = async () => {
+      try {
+        const response = await axios.get('/api/sensors')
+        return response.data
+      } catch (error) {
+        console.error('获取传感器数据失败:', error)
+        return []
+      }
+    }
+
     // 初始化图表
-    const initChart = () => {
+    const initChart = async () => {
       if (sensorChart.value) {
         chartInstance = echarts.init(sensorChart.value)
-        updateChart()
+        
+        // 获取传感器数据并更新图表
+        const sensors = await fetchSensors()
+        updateChart(sensors)
       }
     }
 
     // 更新图表
-    const updateChart = () => {
+    const updateChart = (sensors) => {
       if (!chartInstance) return
 
-      // 准备图表数据
-      const sensorData = []
-      devices.value.forEach(device => {
-        if (device.sensors) {
-          device.sensors.forEach(sensor => {
-            sensorData.push({
-              name: `${device.name}-${sensor.name}`,
-              value: sensor.value
-            })
-          })
+      // 准备图表数据 - 按设备分组显示传感器数据
+      const groupedData = {}
+      sensors.forEach(sensor => {
+        const deviceKey = sensor.device_id
+        if (!groupedData[deviceKey]) {
+          groupedData[deviceKey] = []
         }
+        groupedData[deviceKey].push(sensor)
       })
+
+      // 为每个设备创建一个图表系列
+      const seriesData = []
+      for (const [deviceId, deviceSensors] of Object.entries(groupedData)) {
+        const device = devices.value.find(d => d.id == deviceId)
+        const deviceName = device ? device.name : `设备${deviceId}`
+        
+        deviceSensors.forEach(sensor => {
+          seriesData.push({
+            name: `${deviceName}-${sensor.type}`,
+            value: sensor.value,
+            unit: sensor.unit
+          })
+        })
+      }
 
       const option = {
         tooltip: {
-          trigger: 'item'
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} {d}'
         },
         legend: {
           top: '5%',
@@ -171,7 +159,7 @@ export default {
         series: [{
           name: '传感器数据',
           type: 'pie',
-          radius: ['40%', '70%'],
+          radius: ['30%', '60%'],
           avoidLabelOverlap: false,
           itemStyle: {
             borderRadius: 10,
@@ -180,32 +168,34 @@ export default {
           },
           label: {
             show: true,
-            formatter: '{b}: {c}'
+            formatter: '{b}: {c} {d}%'
           },
           emphasis: {
             label: {
               show: true,
-              fontSize: '18',
+              fontSize: '14',
               fontWeight: 'bold'
             }
           },
           labelLine: {
             show: true
           },
-          data: sensorData
+          data: seriesData
         }]
       }
 
-      chartInstance.setOption(option)
+      chartInstance.setOption(option, true) // 使用true参数进行完整重绘
     }
 
-    onMounted(() => {
-      fetchDevices()
-      initChart()
+    onMounted(async () => {
+      await fetchDevices()
+      await initChart()
 
       // 设置定时刷新
-      refreshInterval = setInterval(() => {
-        fetchDevices()
+      refreshInterval = setInterval(async () => {
+        await fetchDevices()
+        const sensors = await fetchSensors()
+        updateChart(sensors)
       }, 5000)
     })
 
@@ -219,9 +209,10 @@ export default {
     })
 
     // 监听设备数据变化，更新图表
-    watch(devices, () => {
+    watch(devices, async () => {
       if (chartInstance) {
-        updateChart()
+        const sensors = await fetchSensors()
+        updateChart(sensors)
       }
     }, { deep: true })
 
