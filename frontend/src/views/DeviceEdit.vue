@@ -35,7 +35,7 @@
               type="text"
               class="form-control"
               id="deviceType"
-              v-model="deviceForm.type"
+              v-model="deviceForm.device_type"
               required
             />
           </div>
@@ -108,7 +108,7 @@ export default {
     
     const deviceForm = ref({
       name: '',
-      type: '',
+      device_type: '',  // 改为与后端API匹配的字段名
       location: '',
       mqtt_config_id: null,
       topic_config_id: null
@@ -141,7 +141,7 @@ export default {
         const device = response.data
         deviceForm.value = {
           name: device.name,
-          type: device.type,
+          device_type: device.device_type,  // 映射到正确的字段
           location: device.location,
           mqtt_config_id: device.mqtt_config_id || null,
           topic_config_id: device.topic_config_id || null
