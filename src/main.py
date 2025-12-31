@@ -1,9 +1,10 @@
 import os
 import sys
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Body
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, desc
 from sqlalchemy.orm import declarative_base
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -12,6 +13,9 @@ from datetime import datetime
 from contextlib import contextmanager
 
 from fastapi import BackgroundTasks
+
+# 导入CORS中间件
+from fastapi.middleware.cors import CORSMiddleware
 
 # 数据库配置
 SQLALCHEMY_DATABASE_URL = "sqlite:///./mqtt_iot.db"
@@ -31,9 +35,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-@contextmanager
 def get_db_session():
-    """数据库会话上下文管理器"""
+    """获取数据库会话"""
     db = SessionLocal()
     try:
         yield db
@@ -42,53 +45,7 @@ def get_db_session():
 
 
 # 数据模型定义
-class DeviceModel(Base):
-    __tablename__ = "devices"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-    device_type = Column(String)
-    status = Column(String, default="离线")
-    location = Column(String)
-    mqtt_config_id = Column(Integer, nullable=True)  # 关联的MQTT配置ID
-    topic_config_id = Column(Integer, nullable=True)  # 关联的主题配置ID
-
-
-class SensorDataModel(Base):
-    __tablename__ = "sensors"
-
-    id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(Integer)
-    type = Column(String)
-    value = Column(Float)
-    unit = Column(String)
-    timestamp = Column(DateTime)
-    min_value = Column(Float)
-    max_value = Column(Float)
-    alert_status = Column(String)
-
-
-class MQTTConfigModel(Base):
-    __tablename__ = "mqtt_configs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-    server = Column(String)
-    port = Column(Integer)
-    username = Column(String)
-    password = Column(String)
-    is_active = Column(Boolean, default=False)
-
-
-class TopicConfigModel(Base):
-    __tablename__ = "topic_configs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
-    subscribe_topics = Column(String)  # JSON格式的订阅主题列表
-    publish_topic = Column(String)
-    is_active = Column(Boolean, default=False)
-
+from src.models import DeviceModel, SensorDataModel, MQTTConfigModel, TopicConfigModel
 
 # Pydantic模型定义
 class DeviceBase(BaseModel):
@@ -176,6 +133,7 @@ class TopicConfigBase(BaseModel):
     name: str
     subscribe_topics: str
     publish_topic: Optional[str] = None
+    mqtt_config_id: Optional[int] = None
 
 
 class TopicConfigCreate(TopicConfigBase):
@@ -186,6 +144,7 @@ class TopicConfigUpdate(BaseModel):
     name: Optional[str] = None
     subscribe_topics: Optional[str] = None
     publish_topic: Optional[str] = None
+    mqtt_config_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -197,187 +156,15 @@ class TopicConfig(TopicConfigBase):
         from_attributes = True
 
 
-# 数据库操作函数
-def get_device_by_id(db: Session, device_id: int):
-    """根据ID获取设备"""
-    return db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
-
-
-def get_device_by_name(db: Session, name: str):
-    """根据名称获取设备"""
-    return db.query(DeviceModel).filter(DeviceModel.name == name).first()
-
-
-def get_devices(db: Session, skip: int = 0, limit: int = 100):
-    """获取设备列表"""
-    return db.query(DeviceModel).offset(skip).limit(limit).all()
-
-
-def create_device(db: Session, device_data: dict):
-    """创建设备"""
-    db_device = DeviceModel(**device_data)
-    db.add(db_device)
-    db.commit()
-    db.refresh(db_device)
-    return db_device
-
-
-def update_device(db: Session, device_id: int, device_data: dict):
-    """更新设备"""
-    db_device = db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
-    if db_device:
-        for key, value in device_data.items():
-            setattr(db_device, key, value)
-        db.commit()
-        db.refresh(db_device)
-    return db_device
-
-
-def delete_device(db: Session, device_id: int):
-    """删除设备"""
-    db_device = db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
-    if db_device:
-        db.delete(db_device)
-        db.commit()
-        return True
-    return False
-
-
-def get_sensor_data_by_device(db: Session, device_id: int):
-    """获取设备的传感器数据"""
-    return db.query(SensorDataModel).filter(SensorDataModel.device_id == device_id).all()
-
-
-def get_all_sensors_from_db(db: Session):
-    """获取所有传感器数据"""
-    return db.query(SensorDataModel).all()
-
-
-def get_latest_sensors_from_db(db: Session):
-    """获取每个传感器类型的最新数据"""
-    # 获取所有唯一的传感器类型
-    unique_sensor_types = db.query(SensorDataModel.type).distinct().all()
-    
-    latest_sensors = []
-    
-    for sensor_type, in unique_sensor_types:
-        # 为每个传感器类型获取最新的记录
-        latest_sensor = db.query(SensorDataModel).filter(
-            SensorDataModel.type == sensor_type
-        ).order_by(SensorDataModel.timestamp.desc()).first()
-        
-        if latest_sensor:
-            latest_sensors.append(latest_sensor)
-    
-    return latest_sensors
-
-
-def get_device_history_from_db(db: Session, device_id: int):
-    """获取设备的历史传感器数据"""
-    # 获取设备的传感器数据，按时间倒序排列，限制为最近100条
-    return db.query(SensorDataModel).filter(
-        SensorDataModel.device_id == device_id
-    ).order_by(SensorDataModel.timestamp.desc()).limit(100).all()
-
-
-def create_sensor_data(db: Session, sensor_data: dict):
-    """创建传感器数据"""
-    db_sensor = SensorDataModel(**sensor_data)
-    db.add(db_sensor)
-    db.commit()
-    db.refresh(db_sensor)
-    return db_sensor
-
-
-def get_mqtt_config_by_id(db: Session, config_id: int):
-    """根据ID获取MQTT配置"""
-    return db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
-
-
-def get_mqtt_configs(db: Session, skip: int = 0, limit: int = 100):
-    """获取MQTT配置列表"""
-    return db.query(MQTTConfigModel).offset(skip).limit(limit).all()
-
-
-def create_mqtt_config(db: Session, config_data: dict):
-    """创建MQTT配置"""
-    db_config = MQTTConfigModel(**config_data)
-    db.add(db_config)
-    db.commit()
-    db.refresh(db_config)
-    return db_config
-
-
-def update_mqtt_config(db: Session, config_id: int, config_data: dict):
-    """更新MQTT配置"""
-    db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
-    if db_config:
-        for key, value in config_data.items():
-            setattr(db_config, key, value)
-        db.commit()
-        db.refresh(db_config)
-    return db_config
-
-
-def delete_mqtt_config(db: Session, config_id: int):
-    """删除MQTT配置"""
-    db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
-    if db_config:
-        db.delete(db_config)
-        db.commit()
-        return True
-    return False
-
-
-def get_topic_config_by_id(db: Session, config_id: int):
-    """根据ID获取主题配置"""
-    return db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
-
-
-def get_topic_configs(db: Session, skip: int = 0, limit: int = 100):
-    """获取主题配置列表"""
-    return db.query(TopicConfigModel).offset(skip).limit(limit).all()
-
-
-def create_topic_config(db: Session, config_data: dict):
-    """创建主题配置"""
-    db_config = TopicConfigModel(**config_data)
-    db.add(db_config)
-    db.commit()
-    db.refresh(db_config)
-    return db_config
-
-
-def update_topic_config(db: Session, config_id: int, config_data: dict):
-    """更新主题配置"""
-    db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
-    if db_config:
-        for key, value in config_data.items():
-            setattr(db_config, key, value)
-        db.commit()
-        db.refresh(db_config)
-    return db_config
-
-
-def delete_topic_config(db: Session, config_id: int):
-    """删除主题配置"""
-    db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
-    if db_config:
-        db.delete(db_config)
-        db.commit()
-        return True
-    return False
-
-
-def get_active_mqtt_config(db: Session):
-    """获取激活的MQTT配置"""
-    return db.query(MQTTConfigModel).filter(MQTTConfigModel.is_active == True).first()
-
-
-def get_active_topic_config(db: Session):
-    """获取激活的主题配置"""
-    return db.query(TopicConfigModel).filter(TopicConfigModel.is_active == True).first()
-
+# 导入数据库操作函数
+from src.db_operations import (
+    get_devices, get_device, create_device, update_device, delete_device, 
+    get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors,
+    get_mqtt_configs, get_mqtt_config_by_id, create_mqtt_config, update_mqtt_config,
+    delete_mqtt_config, activate_mqtt_config, get_active_topic_config, get_active_mqtt_config,  # 添加导入
+    get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,
+    delete_topic_config, activate_topic_config
+)
 
 # MQTT数据处理相关代码
 import paho.mqtt.client as mqtt
@@ -495,22 +282,27 @@ class MQTTService:
         # 解析PB8电平
         pb8_match = re.search(r'PB8 Level:\s*(\d)', payload)
         
-        # 创建设备（如果不存在）
-        device_name = topic.split('/')[1] if '/' in topic else topic
+        # 从主题中提取设备信息
+        # 主题格式应为 "prefix/device_name"，例如 "stm32/1"
+        parts = topic.split('/')
+        if len(parts) < 2:
+            print(f"主题格式不正确，跳过处理: {topic}")
+            return
+        
+        device_name = parts[1]
+        
+        # 检查设备名称是否有效（避免只包含数字等无效名称）
+        if not device_name or device_name.isdigit() or len(device_name) <= 1:
+            print(f"设备名称无效，跳过创建设备: {device_name}")
+            return
+        
         db = SessionLocal()
         try:
-            # 查找或创建设备
+            # 查找设备
             device = db.query(DeviceModel).filter(DeviceModel.name == device_name).first()
             if not device:
-                device = DeviceModel(
-                    name=device_name,
-                    device_type="STM32传感器",
-                    status="在线",
-                    location="未知位置"
-                )
-                db.add(device)
-                db.commit()
-                db.refresh(device)
+                print(f"设备 {device_name} 不存在，跳过处理")
+                return  # 不再自动创建设备，需要用户手动创建
             
             # 保存传感器数据
             if temp1_match:
@@ -592,6 +384,15 @@ Base.metadata.create_all(bind=engine)
 # 创建FastAPI应用
 app = FastAPI()
 
+# 添加CORS中间件 - 允许前端跨域请求
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 在生产环境中应指定具体域名
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有HTTP方法，包括GET, POST, PUT, DELETE, OPTIONS等
+    allow_headers=["*"],  # 允许所有请求头
+)
+
 # 获取当前文件所在目录的路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -600,56 +401,36 @@ static_dir = os.path.join(current_dir, "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
-# 依赖项：获取数据库会话
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# API路由定义
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-
 @app.get("/api/devices", response_model=List[Device])
-async def get_devices_api(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+async def get_devices_api(skip: int = 0, limit: int = 100, db: Session = Depends(get_db_session)):
     devices = get_devices(db, skip=skip, limit=limit)
     return devices
 
 
 @app.get("/api/devices/{device_id}", response_model=Device)
-async def get_device_api(device_id: int, db: Session = Depends(get_db)):
-    device = get_device_by_id(db, device_id)
+async def get_device_api(device_id: int, db: Session = Depends(get_db_session)):
+    device = get_device(db, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     return device
 
 
 @app.post("/api/devices", response_model=Device)
-async def create_device_api(device: Device, db: Session = Depends(get_db)):
-    db_device = get_device_by_name(db, device.name)
-    if db_device:
-        raise HTTPException(status_code=400, detail="Device already exists")
-    device_data = device.model_dump()
-    result = create_device(db, device_data)
-    return result
+async def create_device_api(device: DeviceCreate, db: Session = Depends(get_db_session)):
+    db_device = create_device(db, device)
+    return db_device
 
 
 @app.put("/api/devices/{device_id}", response_model=Device)
-async def update_device_api(device_id: int, device: Device, db: Session = Depends(get_db)):
-    device_data = device.model_dump()
-    result = update_device(db, device_id, device_data)
-    if not result:
+async def update_device_api(device_id: int, device: Device, db: Session = Depends(get_db_session)):
+    db_device = update_device(db, device_id, device)
+    if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
-    return result
+    return db_device
 
 
 @app.delete("/api/devices/{device_id}")
-async def delete_device_api(device_id: int, db: Session = Depends(get_db)):
+async def delete_device_api(device_id: int, db: Session = Depends(get_db_session)):
     success = delete_device(db, device_id)
     if not success:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -657,101 +438,38 @@ async def delete_device_api(device_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/devices/{device_id}/history", response_model=List[dict])
-async def get_device_history_api(device_id: int, db: Session = Depends(get_db)):
-    history = get_device_history_from_db(db, device_id)
-    # 将SQLAlchemy模型转换为字典
-    return [h.__dict__ for h in history if h]
+async def get_device_history_api(device_id: int, db: Session = Depends(get_db_session)):
+    history = get_device_history(db, device_id)
+    return history
+
+
+@app.get("/api/devices/{device_id}/sensors", response_model=List[SensorData])
+async def get_device_sensors_api(device_id: int, db: Session = Depends(get_db_session)):
+    sensors = get_device_sensors(db, device_id)
+    return sensors
 
 
 @app.get("/api/realtime-sensors")
-async def get_realtime_sensors_api(db: Session = Depends(get_db)):
-    """获取实时传感器数据"""
-    try:
-        # 获取所有传感器的最新数据
-        all_sensors = get_all_sensors_from_db(db)
-        
-        # 按设备分组
-        sensors_by_device = {}
-        for sensor in all_sensors:
-            if sensor.device_id not in sensors_by_device:
-                sensors_by_device[sensor.device_id] = []
-            sensors_by_device[sensor.device_id].append(sensor)
-        
-        # 构造返回数据
-        result = []
-        for device_id, sensors in sensors_by_device.items():
-            device_data = {
-                'device_id': device_id,
-                'sensors': []
-            }
-            
-            for sensor in sensors:
-                sensor_data = {
-                    'id': sensor.id,
-                    'type': sensor.type,
-                    'value': sensor.value,
-                    'unit': sensor.unit,
-                    'timestamp': sensor.timestamp,
-                    'alert_status': sensor.alert_status
-                }
-                device_data['sensors'].append(sensor_data)
-            
-            result.append(device_data)
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def get_realtime_sensors_api(db: Session = Depends(get_db_session)):
+    sensors = get_realtime_sensors(db)
+    return sensors
 
 
 @app.get("/api/latest-sensors")
-async def get_latest_sensors_api(db: Session = Depends(get_db)):
-    """获取最新的传感器数据（仅返回最新记录，用于实时显示）"""
-    try:
-        # 获取所有设备的最新传感器数据
-        latest_sensors = get_latest_sensors_from_db(db)
-        
-        # 按设备分组
-        sensors_by_device = {}
-        for sensor in latest_sensors:
-            if sensor.device_id not in sensors_by_device:
-                sensors_by_device[sensor.device_id] = []
-            sensors_by_device[sensor.device_id].append(sensor)
-        
-        # 构造返回数据
-        result = []
-        for device_id, sensors in sensors_by_device.items():
-            device_data = {
-                'device_id': device_id,
-                'sensors': []
-            }
-            
-            for sensor in sensors:
-                sensor_data = {
-                    'id': sensor.id,
-                    'type': sensor.type,
-                    'value': sensor.value,
-                    'unit': sensor.unit,
-                    'timestamp': sensor.timestamp,
-                    'alert_status': sensor.alert_status
-                }
-                device_data['sensors'].append(sensor_data)
-            
-            result.append(device_data)
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def get_latest_sensors_api(db: Session = Depends(get_db_session)):
+    sensors = get_latest_sensors(db)
+    return sensors
 
 
 # MQTT配置相关API
 @app.get("/api/mqtt-configs", response_model=List[MQTTConfig])
-async def get_mqtt_configs_api(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+async def get_mqtt_configs_api(skip: int = 0, limit: int = 100, db: Session = Depends(get_db_session)):
     configs = get_mqtt_configs(db, skip=skip, limit=limit)
     return configs
 
 
 @app.get("/api/mqtt-configs/{config_id}", response_model=MQTTConfig)
-async def get_mqtt_config_api(config_id: int, db: Session = Depends(get_db)):
+async def get_mqtt_config_api(config_id: int, db: Session = Depends(get_db_session)):
     config = get_mqtt_config_by_id(db, config_id)
     if not config:
         raise HTTPException(status_code=404, detail="MQTT Config not found")
@@ -759,38 +477,56 @@ async def get_mqtt_config_api(config_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/mqtt-configs", response_model=MQTTConfig)
-async def create_mqtt_config_api(config: MQTTConfig, db: Session = Depends(get_db)):
-    config_data = config.model_dump()
-    result = create_mqtt_config(db, config_data)
-    return result
+async def create_mqtt_config_api(config: MQTTConfigCreate, db: Session = Depends(get_db_session)):
+    db_config = create_mqtt_config(db, config)
+    return db_config
 
 
 @app.put("/api/mqtt-configs/{config_id}", response_model=MQTTConfig)
-async def update_mqtt_config_api(config_id: int, config: MQTTConfig, db: Session = Depends(get_db)):
-    config_data = config.model_dump()
-    result = update_mqtt_config(db, config_id, config_data)
-    if not result:
+async def update_mqtt_config_api(config_id: int, config: MQTTConfigUpdate, db: Session = Depends(get_db_session)):
+    db_config = update_mqtt_config(db, config_id, config)
+    if not db_config:
         raise HTTPException(status_code=404, detail="MQTT Config not found")
-    return result
+    return db_config
 
 
 @app.delete("/api/mqtt-configs/{config_id}")
-async def delete_mqtt_config_api(config_id: int, db: Session = Depends(get_db)):
+async def delete_mqtt_config_api(config_id: int, db: Session = Depends(get_db_session)):
     success = delete_mqtt_config(db, config_id)
     if not success:
         raise HTTPException(status_code=404, detail="MQTT Config not found")
     return {"message": "MQTT Config deleted successfully"}
 
 
+# 激活MQTT配置API
+@app.post("/api/mqtt-configs/{config_id}/activate")
+async def activate_mqtt_config_api(config_id: int, db: Session = Depends(get_db_session)):
+    success = activate_mqtt_config(db, config_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="MQTT Config not found")
+    return {"message": "MQTT Config activated successfully"}
+
+
+# 测试MQTT连接API
+@app.post("/api/mqtt-configs/{config_id}/test")
+async def test_mqtt_connection_api(config_id: int, db: Session = Depends(get_db_session)):
+    config = get_mqtt_config_by_id(db, config_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="MQTT Config not found")
+    
+    # 这里可以添加测试连接的逻辑
+    return {"message": f"Testing connection for config {config.name}"}
+
+
 # 主题配置相关API
 @app.get("/api/topic-configs", response_model=List[TopicConfig])
-async def get_topic_configs_api(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+async def get_topic_configs_api(skip: int = 0, limit: int = 100, db: Session = Depends(get_db_session)):
     configs = get_topic_configs(db, skip=skip, limit=limit)
     return configs
 
 
 @app.get("/api/topic-configs/{config_id}", response_model=TopicConfig)
-async def get_topic_config_api(config_id: int, db: Session = Depends(get_db)):
+async def get_topic_config_api(config_id: int, db: Session = Depends(get_db_session)):
     config = get_topic_config_by_id(db, config_id)
     if not config:
         raise HTTPException(status_code=404, detail="Topic Config not found")
@@ -798,28 +534,140 @@ async def get_topic_config_api(config_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/topic-configs", response_model=TopicConfig)
-async def create_topic_config_api(config: TopicConfig, db: Session = Depends(get_db)):
-    config_data = config.model_dump()
-    result = create_topic_config(db, config_data)
-    return result
+async def create_topic_config_api(config: TopicConfigCreate, db: Session = Depends(get_db_session)):
+    db_config = create_topic_config(db, config)
+    return db_config
 
 
 @app.put("/api/topic-configs/{config_id}", response_model=TopicConfig)
-async def update_topic_config_api(config_id: int, config: TopicConfig, db: Session = Depends(get_db)):
-    config_data = config.model_dump()
-    result = update_topic_config(db, config_id, config_data)
-    if not result:
+async def update_topic_config_api(config_id: int, config: TopicConfigUpdate, db: Session = Depends(get_db_session)):
+    db_config = update_topic_config(db, config_id, config)
+    if not db_config:
         raise HTTPException(status_code=404, detail="Topic Config not found")
-    return result
+    return db_config
 
 
 @app.delete("/api/topic-configs/{config_id}")
-async def delete_topic_config_api(config_id: int, db: Session = Depends(get_db)):
+async def delete_topic_config_api(config_id: int, db: Session = Depends(get_db_session)):
     success = delete_topic_config(db, config_id)
     if not success:
         raise HTTPException(status_code=404, detail="Topic Config not found")
     return {"message": "Topic Config deleted successfully"}
 
+
+# 添加激活配置和测试连接API
+@app.post("/api/topic-configs/{config_id}/activate")
+async def activate_topic_config_api(config_id: int, db: Session = Depends(get_db_session)):
+    success = activate_topic_config(db, config_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Topic Config not found")
+    return {"message": "Topic Config activated successfully"}
+
+
+# MQTT消费相关的API端点
+@app.post("/api/subscribe-topic")
+async def subscribe_to_topic(
+    topic: str = Body(..., embed=True),
+    mqtt_config_id: int = Body(..., embed=True),
+    db: Session = Depends(get_db_session)
+):
+    """
+    订阅指定的MQTT主题
+    """
+    # 获取MQTT配置
+    mqtt_config = get_mqtt_config_by_id(db, mqtt_config_id)
+    if not mqtt_config:
+        raise HTTPException(status_code=404, detail="MQTT配置不存在")
+    
+    # 更新全局MQTT服务的订阅主题
+    global mqtt_service
+    if mqtt_service and mqtt_service.client:
+        # 使用MQTT服务的动态订阅功能
+        mqtt_service.subscribe_to_topic(topic)
+        return {"message": f"成功订阅主题: {topic}", "topic": topic}
+    
+    raise HTTPException(status_code=500, detail="MQTT服务未启动")
+
+
+@app.post("/api/unsubscribe-topic")
+async def unsubscribe_from_topic(
+    topic: str = Body(..., embed=True),
+    db: Session = Depends(get_db_session)
+):
+    """
+    取消订阅指定的MQTT主题
+    """
+    global mqtt_service
+    if mqtt_service and mqtt_service.client:
+        mqtt_service.unsubscribe_from_topic(topic)
+        return {"message": f"成功取消订阅主题: {topic}", "topic": topic}
+    
+    raise HTTPException(status_code=500, detail="MQTT服务未启动")
+
+
+# 用于获取实时MQTT消息的API
+@app.get("/api/mqtt-messages")
+async def get_mqtt_messages(
+    skip: int = 0,
+    limit: int = 20,
+    db: Session = Depends(get_db_session)
+):
+    """
+    获取最近的MQTT消息
+    """
+    # 从传感器数据表获取最近的消息
+    messages = db.query(SensorDataModel).order_by(desc(SensorDataModel.timestamp)).offset(skip).limit(limit).all()
+    
+    # 转换为合适的格式
+    result = []
+    for msg in messages:
+        result.append({
+            "topic": msg.topic or "unknown",
+            "payload": msg.value,
+            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
+        })
+    
+    return result
+
+
+# 主页面路由 - 提供前端应用
+@app.get("/")
+async def read_root():
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>MQTT IoT 管理系统</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    </head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/static/js/app.js"></script>
+    </body>
+    </html>
+    """)
+
+# 为前端路由提供fallback，确保SPA路由正常工作
+# 必须在所有具体路由之后定义
+@app.get("/{full_path:path}")
+async def catch_all(full_path: str):
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>MQTT IoT 管理系统</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    </head>
+    <body>
+        <div id="app"></div>
+        <script type="module" src="/static/js/app.js"></script>
+    </body>
+    </html>
+    """)
 
 # 执行数据库迁移
 def migrate_database():
@@ -834,6 +682,19 @@ def migrate_database():
         # 这里可以添加创建默认数据的逻辑
     else:
         print("数据库已存在，跳过初始化")
+        
+        # 检查是否有设备数据，如果没有则不添加默认设备（保持用户数据）
+        db = SessionLocal()
+        try:
+            device_count = db.query(DeviceModel).count()
+            if device_count == 0:
+                print("数据库中没有设备")
+            else:
+                print(f"数据库中已有 {device_count} 个设备")
+        except Exception as e:
+            print(f"检查设备数据时出错: {e}")
+        finally:
+            db.close()
 
 
 # 启动时执行数据库迁移
@@ -853,33 +714,3 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
-def get_device_history_from_db(db: Session, device_id: int) -> List[SensorDataModel]:
-    """获取设备的历史传感器数据"""
-    # 获取设备的传感器数据，按时间倒序排列，限制为最近100条
-    return db.query(SensorDataModel).filter(
-        SensorDataModel.device_id == device_id
-    ).order_by(SensorDataModel.timestamp.desc()).limit(100).all()
-
-
-def get_all_sensors_from_db(db: Session) -> List[SensorDataModel]:
-    """获取所有传感器数据"""
-    return db.query(SensorDataModel).all()
-
-
-def get_latest_sensors_from_db(db: Session) -> List[SensorDataModel]:
-    """获取每个传感器类型的最新数据"""
-    # 获取所有唯一的传感器类型
-    unique_sensor_types = db.query(SensorDataModel.type).distinct().all()
-    
-    latest_sensors = []
-    
-    for sensor_type, in unique_sensor_types:
-        # 为每个传感器类型获取最新的记录
-        latest_sensor = db.query(SensorDataModel).filter(
-            SensorDataModel.type == sensor_type
-        ).order_by(SensorDataModel.timestamp.desc()).first()
-        
-        if latest_sensor:
-            latest_sensors.append(latest_sensor)
-    
-    return latest_sensors

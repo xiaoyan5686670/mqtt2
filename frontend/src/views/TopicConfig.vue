@@ -236,9 +236,10 @@ export default {
     const loadMqttConfigs = async () => {
       try {
         const response = await axios.get('/api/mqtt-configs')
-        mqttConfigs.value = response.data
+        mqttConfigs.value = Array.isArray(response.data) ? response.data : []
       } catch (error) {
         console.error('加载MQTT配置失败:', error)
+        mqttConfigs.value = []
       }
     }
 

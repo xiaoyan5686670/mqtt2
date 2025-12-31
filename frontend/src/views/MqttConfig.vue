@@ -283,7 +283,7 @@ export default {
     const loadConfigs = async () => {
       try {
         const response = await axios.get('/api/mqtt-configs')
-        configs.value = response.data
+        configs.value = Array.isArray(response.data) ? response.data : []
       } catch (error) {
         console.error('加载MQTT配置列表失败:', error)
         addToHistory('加载配置列表失败', false)

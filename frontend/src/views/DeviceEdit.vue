@@ -118,9 +118,10 @@ export default {
     const loadMqttConfigs = async () => {
       try {
         const response = await axios.get('/api/mqtt-configs')
-        mqttConfigs.value = response.data
+        mqttConfigs.value = Array.isArray(response.data) ? response.data : []
       } catch (error) {
         console.error('加载MQTT配置失败:', error)
+        mqttConfigs.value = []
       }
     }
 
@@ -128,9 +129,10 @@ export default {
     const loadTopicConfigs = async () => {
       try {
         const response = await axios.get('/api/topic-configs')
-        topicConfigs.value = response.data
+        topicConfigs.value = Array.isArray(response.data) ? response.data : []
       } catch (error) {
         console.error('加载主题配置失败:', error)
+        topicConfigs.value = []
       }
     }
 

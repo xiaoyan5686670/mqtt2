@@ -1,14 +1,19 @@
+import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import Dashboard from '../views/Dashboard.vue'
-import DeviceList from '../views/DeviceList.vue'
-import DeviceDetail from '../views/DeviceDetail.vue'
-import DeviceEdit from '../views/DeviceEdit.vue'
-import MqttConfig from '../views/MqttConfig.vue'
-import TopicConfig from '../views/TopicConfig.vue'
-import RealTimeData from '../views/RealTimeData.vue'
-import Login from '../views/Login.vue'
-import SubscribeOptions from '../views/SubscribeOptions.vue'
+import App from '../../../frontend/src/App.vue'
 
+// 导入所有页面组件
+import Dashboard from '../../../frontend/src/views/Dashboard.vue'
+import DeviceList from '../../../frontend/src/views/DeviceList.vue'
+import DeviceDetail from '../../../frontend/src/views/DeviceDetail.vue'
+import DeviceEdit from '../../../frontend/src/views/DeviceEdit.vue'
+import MqttConfig from '../../../frontend/src/views/MqttConfig.vue'
+import TopicConfig from '../../../frontend/src/views/TopicConfig.vue'
+import RealTimeData from '../../../frontend/src/views/RealTimeData.vue'
+import Login from '../../../frontend/src/views/Login.vue'
+import SubscribeOptions from '../../../frontend/src/views/SubscribeOptions.vue'
+
+// 定义路由
 const routes = [
   {
     path: '/login',
@@ -68,9 +73,13 @@ const routes = [
   }
 ]
 
+// 创建路由实例
 const router = createRouter({
   history: createWebHistory(),
   routes
 })
 
-export default router
+// 创建Vue应用并使用路由
+const app = createApp(App)
+app.use(router)
+app.mount('#app')

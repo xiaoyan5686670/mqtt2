@@ -11,7 +11,7 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from database import Base
+from src.database import Base
 
 
 class DeviceModel(Base):
@@ -20,8 +20,8 @@ class DeviceModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     device_type = Column(String)
-    status = Column(String, default="离线")
-    location = Column(String)
+    status = Column(String, default="offline")
+    location = Column(String, nullable=True)
     mqtt_config_id = Column(Integer, nullable=True)  # 关联的MQTT配置ID
     topic_config_id = Column(Integer, nullable=True)  # 关联的主题配置ID
 
@@ -60,6 +60,7 @@ class TopicConfigModel(Base):
     subscribe_topics = Column(String)  # JSON格式的订阅主题列表
     publish_topic = Column(String)
     is_active = Column(Boolean, default=False)
+    mqtt_config_id = Column(Integer, nullable=True)  # 关联的MQTT配置ID
 
 
 # Pydantic模型定义

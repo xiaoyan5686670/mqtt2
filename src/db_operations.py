@@ -9,13 +9,18 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-# 导入模型
-from models import DeviceModel, SensorDataModel, MQTTConfigModel, TopicConfigModel
-from database import SessionLocal
+# 使用绝对路径导入模型
+from src.models import DeviceModel, SensorDataModel, MQTTConfigModel, TopicConfigModel
+from src.database import SessionLocal
 
 
 def get_device_by_id(db: Session, device_id: int):
     """根据ID获取设备"""
+    return db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
+
+
+def get_device(db: Session, device_id: int):
+    """根据ID获取设备（与get_device_by_id功能相同，保持兼容性）"""
     return db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
 
 
@@ -59,55 +64,9 @@ def delete_device(db: Session, device_id: int):
     return False
 
 
-def get_sensor_data_by_device(db: Session, device_id: int):
-    """获取设备的传感器数据"""
-    return db.query(SensorDataModel).filter(SensorDataModel.device_id == device_id).all()
-
-
-def get_all_sensors_from_db(db: Session):
-    """获取所有传感器数据"""
-    return db.query(SensorDataModel).all()
-
-
-def get_latest_sensors_from_db(db: Session):
-    """获取每个传感器类型的最新数据"""
-    # 获取所有唯一的传感器类型
-    unique_sensor_types = db.query(SensorDataModel.type).distinct().all()
-    
-    latest_sensors = []
-    
-    for sensor_type, in unique_sensor_types:
-        # 为每个传感器类型获取最新的记录
-        latest_sensor = db.query(SensorDataModel).filter(
-            SensorDataModel.type == sensor_type
-        ).order_by(SensorDataModel.timestamp.desc()).first()
-        
-        if latest_sensor:
-            latest_sensors.append(latest_sensor)
-    
-    return latest_sensors
-
-
-def get_device_history_from_db(db: Session, device_id: int):
-    """获取设备的历史传感器数据"""
-    # 获取设备的传感器数据，按时间倒序排列，限制为最近100条
-    return db.query(SensorDataModel).filter(
-        SensorDataModel.device_id == device_id
-    ).order_by(SensorDataModel.timestamp.desc()).limit(100).all()
-
-
-def create_sensor_data(db: Session, sensor_data: dict):
-    """创建传感器数据"""
-    db_sensor = SensorDataModel(**sensor_data)
-    db.add(db_sensor)
-    db.commit()
-    db.refresh(db_sensor)
-    return db_sensor
-
-
-def get_mqtt_config_by_id(db: Session, config_id: int):
-    """根据ID获取MQTT配置"""
-    return db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+def get_active_topic_config(db: Session):
+    """获取激活的主题配置"""
+    return db.query(TopicConfigModel).filter(TopicConfigModel.is_active == True).first()
 
 
 def get_mqtt_configs(db: Session, skip: int = 0, limit: int = 100):
@@ -183,3 +142,104 @@ def delete_topic_config(db: Session, config_id: int):
         db.commit()
         return True
     return False
+
+
+def get_device_history(db: Session, device_id: int):
+    """获取设备历史数据"""
+    return db.query(SensorDataModel).filter(SensorDataModel.device_id == device_id).all()
+
+
+def get_device_sensors(db: Session, device_id: int):
+    """获取设备传感器数据"""
+    return db.query(SensorDataModel).filter(SensorDataModel.device_id == device_id).all()
+
+
+def get_realtime_sensors(db: Session):
+    """获取实时传感器数据"""
+    from sqlalchemy import desc
+    # 获取每个设备的最新传感器数据
+    subquery = db.query(
+        SensorDataModel.device_id,
+        db.query(SensorDataModel).filter(
+            SensorDataModel.device_id == SensorDataModel.device_id
+        ).order_by(desc(SensorDataModel.timestamp)).limit(1).subquery()
+    ).distinct(SensorDataModel.device_id).subquery()
+    
+    return db.query(SensorDataModel).join(
+        subquery, SensorDataModel.id == subquery.c.id
+    ).all()
+
+
+def get_latest_sensors(db: Session):
+    """获取最新传感器数据，按设备分组"""
+    from sqlalchemy import desc
+    # 获取最新的传感器数据
+    sensors = db.query(SensorDataModel).order_by(desc(SensorDataModel.timestamp)).limit(50).all()
+    
+    # 按设备ID分组
+    devices = {}
+    for sensor in sensors:
+        device_id = sensor.device_id
+        if device_id not in devices:
+            devices[device_id] = {
+                'device_id': device_id,
+                'sensors': []
+            }
+        # 添加传感器数据
+        devices[device_id]['sensors'].append({
+            'id': sensor.id,
+            'type': sensor.type,
+            'value': sensor.value,
+            'unit': sensor.unit,
+            'timestamp': sensor.timestamp
+        })
+    
+    # 返回设备列表
+    return list(devices.values())
+
+
+def activate_mqtt_config(db: Session, config_id: int):
+    """激活MQTT配置"""
+    # 先将所有配置设为非激活
+    db.query(MQTTConfigModel).update({MQTTConfigModel.is_active: False})
+    # 激活指定配置
+    config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+    if config:
+        config.is_active = True
+        db.commit()
+        return True
+    return False
+
+
+def activate_topic_config(db: Session, config_id: int):
+    """激活主题配置"""
+    # 先将所有配置设为非激活
+    db.query(TopicConfigModel).update({TopicConfigModel.is_active: False})
+    # 激活指定配置
+    config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+    if config:
+        config.is_active = True
+        db.commit()
+        return True
+    return False
+
+
+def get_mqtt_config_by_id(db: Session, config_id: int):
+    """根据ID获取MQTT配置"""
+    return db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
+
+
+def get_active_mqtt_config(db: Session):
+    """获取激活的MQTT配置"""
+    return db.query(MQTTConfigModel).filter(MQTTConfigModel.is_active == True).first()
+
+
+def update_topic_config(db: Session, config_id: int, config_data: dict):
+    """更新主题配置"""
+    db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+    if db_config:
+        for key, value in config_data.items():
+            setattr(db_config, key, value)
+        db.commit()
+        db.refresh(db_config)
+    return db_config
