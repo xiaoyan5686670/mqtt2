@@ -14,9 +14,9 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from database import SessionLocal
-from models import DeviceModel, SensorDataModel, MQTTConfigModel
-from config_service import get_active_mqtt_config, get_active_topic_config
+from src.database import SessionLocal
+from src.models import DeviceModel, SensorDataModel, MQTTConfigModel
+from src.config_service import get_active_mqtt_config, get_active_topic_config
 
 
 class MQTTService:
@@ -124,10 +124,39 @@ class MQTTService:
         
         return []
 
+    def subscribe_to_topic(self, topic: str):
+        """动态订阅指定主题"""
+        if not self.client:
+            print("MQTT客户端未初始化")
+            return False
+
+        try:
+            # 订阅指定主题
+            self.client.subscribe(topic)
+            print(f"已订阅主题: {topic}")
+            return True
+        except Exception as e:
+            print(f"订阅主题失败: {e}")
+            return False
+
+    def unsubscribe_from_topic(self, topic: str):
+        """取消订阅指定主题"""
+        if not self.client:
+            print("MQTT客户端未初始化")
+            return False
+
+        try:
+            # 取消订阅指定主题
+            self.client.unsubscribe(topic)
+            print(f"已取消订阅主题: {topic}")
+            return True
+        except Exception as e:
+            print(f"取消订阅主题失败: {e}")
+            return False
+
     def on_message(self, client, userdata, msg):
-        """MQTT消息回调函数"""
+        """消息接收回调"""
         print(f"收到消息: {msg.topic} - {msg.payload.decode()}")
-        
         try:
             # 解析传感器数据
             payload = msg.payload.decode()
@@ -135,34 +164,85 @@ class MQTTService:
         except Exception as e:
             print(f"处理消息时出错: {e}")
 
-    def save_message_to_db(self, topic: str, payload: str):
-        """保存消息到数据库"""
-        try:
-            # 创建传感器数据记录
-            sensor_data = SensorDataModel(
-                device_id=0,  # 暂时使用0，后续可以关联到具体设备
-                type="mqtt_message",  # 传感器类型
-                value=payload,  # 消息内容
-                timestamp=datetime.utcnow(),
-                topic=topic  # 消息主题
-            )
-            
-            # 保存到数据库
-            self.db.add(sensor_data)
-            self.db.commit()
-            print(f"消息已保存到数据库: {topic}")
-        except Exception as e:
-            print(f"保存消息到数据库失败: {e}")
-            self.db.rollback()
+    def process_sensor_data(self, payload, topic):
+        """处理传感器数据"""
+        # 解析传感器数据
+        # 格式示例: "stm32/1 Temperature1: 22.10 C, Humidity1: 16.10 %\nTemperature2: 21.80 C, Humidity2: 23.40 %\nRelay Status: 1\nPB8 Level: 1"
+        
+        # 解析温度1和湿度1
+        temp1_match = re.search(r'Temperature1:\s*([\d.]+)\s*C', payload)
+        hum1_match = re.search(r'Humidity1:\s*([\d.]+)\s*%', payload)
+        
+        # 解析温度2和湿度2
+        temp2_match = re.search(r'Temperature2:\s*([\d.]+)\s*C', payload)
+        hum2_match = re.search(r'Humidity2:\s*([\d.]+)\s*%', payload)
+        
+        # 解析继电器状态
+        relay_match = re.search(r'Relay Status:\s*(\d)', payload)
+        
+        # 解析PB8电平
+        pb8_match = re.search(r'PB8 Level:\s*(\d)', payload)
+        
+        # 从主题中提取设备信息
+        # 主题格式应为 "prefix/device_name" 或 "prefix/device_id"，例如 "stm32/1" 或 "devices/stm32"
+        parts = topic.split('/')
+        if len(parts) < 2:
+            print(f"主题格式不正确，跳过处理: {topic}")
+            return
+        
+        # 尝试从数据库中查找设备
+        # 如果直接使用第二部分无法找到设备，则尝试将整个前缀作为设备名
+        device_candidate_1 = parts[1]  # 例如 '1' 在 'stm32/1' 中
+        device_candidate_2 = parts[0]  # 例如 'stm32' 在 'stm32/1' 中
+        
+        # 首先尝试使用第二部分作为设备名
+        device = self.db.query(DeviceModel).filter(DeviceModel.name == device_candidate_1).first()
+        if device:
+            device_name = device_candidate_1
+        else:
+            # 如果没找到，尝试使用第一部分作为设备名
+            device = self.db.query(DeviceModel).filter(DeviceModel.name == device_candidate_2).first()
+            if device:
+                device_name = device_candidate_2
+            else:
+                # 如果仍然没找到，尝试组合模式，例如 'stm32' 可能对应 'stm32/1' 这样的主题
+                device = self.db.query(DeviceModel).filter(DeviceModel.name.like(f'%{device_candidate_2}%')).first()
+                if device:
+                    device_name = device.name
+                else:
+                    print(f"设备 {device_candidate_1} 或 {device_candidate_2} 不存在，跳过处理")
+                    return
 
-    def on_message(self, client, userdata, msg):
-        """消息接收回调"""
-        print(f"收到消息: {msg.topic} - {msg.payload.decode()}")
+        # 检查设备名称是否有效（允许字母数字组合）
+        if not device_name or len(device_name) <= 1:
+            print(f"设备名称无效，跳过创建设备: {device_name}")
+            return
+        
         try:
-            # 将消息保存到数据库
-            self.save_message_to_db(msg.topic, msg.payload.decode())
+            # 查找设备
+            device = self.db.query(DeviceModel).filter(DeviceModel.name == device_name).first()
+            if not device:
+                print(f"设备 {device_name} 不存在，跳过处理")
+                return  # 不再自动创建设备，需要用户手动创建
+            
+            # 保存传感器数据
+            if temp1_match:
+                self.save_sensor_data(self.db, device.id, "Temperature1", float(temp1_match.group(1)), "°C")
+            if hum1_match:
+                self.save_sensor_data(self.db, device.id, "Humidity1", float(hum1_match.group(1)), "%")
+            if temp2_match:
+                self.save_sensor_data(self.db, device.id, "Temperature2", float(temp2_match.group(1)), "°C")
+            if hum2_match:
+                self.save_sensor_data(self.db, device.id, "Humidity2", float(hum2_match.group(1)), "%")
+            if relay_match:
+                self.save_sensor_data(self.db, device.id, "Relay Status", int(relay_match.group(1)), "")
+            if pb8_match:
+                self.save_sensor_data(self.db, device.id, "PB8 Level", int(pb8_match.group(1)), "")
+            
+            self.db.commit()
         except Exception as e:
-            print(f"处理消息时出错: {e}")
+            print(f"保存传感器数据时出错: {e}")
+            self.db.rollback()
 
     def save_sensor_data(self, db, device_id, sensor_type, value, unit):
         """保存传感器数据到数据库"""
@@ -177,18 +257,44 @@ class MQTTService:
             existing_sensor.value = value
             existing_sensor.unit = unit
             existing_sensor.timestamp = datetime.utcnow()
+            # 更新告警状态
+            if 'Temperature' in sensor_type and float(value) > 28:
+                existing_sensor.alert_status = 'alert' if float(value) > 30 else 'warning'
+            elif 'Humidity' in sensor_type and float(value) > 65:
+                existing_sensor.alert_status = 'alert' if float(value) > 70 else 'warning'
+            else:
+                existing_sensor.alert_status = 'normal'
         else:
             # 创建新的传感器数据
+            # 确定默认的最小值和最大值
+            min_value = 0.0
+            max_value = 100.0
+            if 'Temperature' in sensor_type:
+                min_value = -40.0  # 常见温度传感器范围
+                max_value = 80.0
+            elif 'Humidity' in sensor_type:
+                min_value = 0.0   # 湿度范围
+                max_value = 100.0
+            
             sensor_data = SensorDataModel(
                 device_id=device_id,
                 type=sensor_type,
                 value=value,
                 unit=unit,
                 timestamp=datetime.utcnow(),
-                min_value=0,
-                max_value=100,
+                min_value=min_value,
+                max_value=max_value,
                 alert_status="normal"
             )
+            
+            # 更新告警状态
+            if 'Temperature' in sensor_type and float(value) > 28:
+                sensor_data.alert_status = 'alert' if float(value) > 30 else 'warning'
+            elif 'Humidity' in sensor_type and float(value) > 65:
+                sensor_data.alert_status = 'alert' if float(value) > 70 else 'warning'
+            else:
+                sensor_data.alert_status = 'normal'
+                
             db.add(sensor_data)
 
     def start(self):
