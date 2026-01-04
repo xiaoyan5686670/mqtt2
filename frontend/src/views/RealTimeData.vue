@@ -2,68 +2,90 @@
   <div>
     <h2>实时传感器数据</h2>
 
-    <div class="row">
-      <!-- 温湿度传感器1 -->
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-header">
-            <h5>传感器组 1 (Temperature1 & Humidity1)</h5>
-          </div>
-          <div class="card-body">
-            <div id="chart1" style="height: 300px;"></div>
-            <div class="sensor-values mt-3">
-              <div class="row">
-                <div class="col">
-                  <p class="mb-1">温度: <span class="fw-bold">{{ sensorData.temp1 }}°C</span></p>
-                  <p class="mb-1">湿度: <span class="fw-bold">{{ sensorData.hum1 }}%</span></p>
+    <!-- 设备选择容器，框住所有传感器组 -->
+    <div class="device-container card">
+      <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">
+          <i class="fas fa-microchip"></i> 
+          当前设备: 
+          <select 
+            class="device-select" 
+            v-model="selectedDeviceId"
+            @change="onDeviceChange"
+          >
+            <option value="">请选择设备</option>
+            <option v-for="device in devices" :key="device.id" :value="device.id">
+              {{ device.name }} ({{ device.location || '未知位置' }})
+            </option>
+          </select>
+        </h4>
+      </div>
+      
+      <div class="card-body">
+        <div class="row">
+          <!-- 温湿度传感器1 -->
+          <div class="col-md-4">
+            <div class="card sensor-card">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">传感器组 1 (Temperature1 & Humidity1)</h5>
+              </div>
+              <div class="card-body">
+                <div id="chart1" style="height: 300px;"></div>
+                <div class="sensor-values mt-3">
+                  <div class="row">
+                    <div class="col">
+                      <p class="mb-1">温度: <span class="fw-bold">{{ sensorData.temp1 }}°C</span></p>
+                      <p class="mb-1">湿度: <span class="fw-bold">{{ sensorData.hum1 }}%</span></p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- 温湿度传感器2 -->
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-header">
-            <h5>传感器组 2 (Temperature2 & Humidity2)</h5>
-          </div>
-          <div class="card-body">
-            <div id="chart2" style="height: 300px;"></div>
-            <div class="sensor-values mt-3">
-              <div class="row">
-                <div class="col">
-                  <p class="mb-1">温度: <span class="fw-bold">{{ sensorData.temp2 }}°C</span></p>
-                  <p class="mb-1">湿度: <span class="fw-bold">{{ sensorData.hum2 }}%</span></p>
+          <!-- 温湿度传感器2 -->
+          <div class="col-md-4">
+            <div class="card sensor-card">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">传感器组 2 (Temperature2 & Humidity2)</h5>
+              </div>
+              <div class="card-body">
+                <div id="chart2" style="height: 300px;"></div>
+                <div class="sensor-values mt-3">
+                  <div class="row">
+                    <div class="col">
+                      <p class="mb-1">温度: <span class="fw-bold">{{ sensorData.temp2 }}°C</span></p>
+                      <p class="mb-1">湿度: <span class="fw-bold">{{ sensorData.hum2 }}%</span></p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- 继电器和PB8 -->
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-header">
-            <h5>控制组 (Relay & PB8)</h5>
-          </div>
-          <div class="card-body">
-            <div id="chart3" style="height: 300px;"></div>
-            <div class="sensor-values mt-3">
-              <div class="row">
-                <div class="col">
-                  <p class="mb-1">继电器状态: 
-                    <span class="fw-bold" :class="sensorData.relay === 1 ? 'text-success' : 'text-danger'">
-                      {{ sensorData.relay === 1 ? '开启' : '关闭' }}
-                    </span>
-                  </p>
-                  <p class="mb-1">PB8电平: 
-                    <span class="fw-bold" :class="sensorData.pb8 === 1 ? 'text-success' : 'text-primary'">
-                      {{ sensorData.pb8 === 1 ? '高电平' : '低电平' }}
-                    </span>
-                  </p>
+          <!-- 继电器和PB8 -->
+          <div class="col-md-4">
+            <div class="card sensor-card">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">控制组 (Relay & PB8)</h5>
+              </div>
+              <div class="card-body">
+                <div id="chart3" style="height: 300px;"></div>
+                <div class="sensor-values mt-3">
+                  <div class="row">
+                    <div class="col">
+                      <p class="mb-1">继电器状态: 
+                        <span class="fw-bold" :class="sensorData.relay === 1 ? 'text-success' : 'text-danger'">
+                          {{ sensorData.relay === 1 ? '开启' : '关闭' }}
+                        </span>
+                      </p>
+                      <p class="mb-1">PB8电平: 
+                        <span class="fw-bold" :class="sensorData.pb8 === 1 ? 'text-success' : 'text-primary'">
+                          {{ sensorData.pb8 === 1 ? '高电平' : '低电平' }}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -92,10 +114,26 @@ export default {
       pb8: 0
     })
     
+    // 设备列表
+    const devices = ref([])
+    
+    // 当前选中的设备ID
+    const selectedDeviceId = ref('')
+    
     // 图表实例
     let chart1 = null
     let chart2 = null
     let chart3 = null
+    
+    // 获取设备列表
+    const fetchDevices = async () => {
+      try {
+        const response = await axios.get('/api/devices')
+        devices.value = response.data
+      } catch (error) {
+        console.error('获取设备列表失败:', error)
+      }
+    }
     
     // 解析传感器数据
     const parseSensorData = (rawData) => {
@@ -281,29 +319,31 @@ export default {
     
     // 获取实时数据
     const fetchRealTimeData = async () => {
+      if (!selectedDeviceId.value) {
+        return
+      }
+      
       try {
-        // 获取最新的传感器数据
-        const response = await axios.get('/api/latest-sensors')
+        // 获取指定设备的最新传感器数据
+        const response = await axios.get(`/api/devices/${selectedDeviceId.value}/latest-sensors`)
         const sensors = response.data
         
-        // 查找包含所需传感器数据的设备数据
+        // 解析传感器数据
         let temp1 = 0, hum1 = 0, temp2 = 0, hum2 = 0, relay = 0, pb8 = 0
         
-        for (const deviceData of sensors) {
-          for (const sensor of deviceData.sensors) {
-            if (sensor.type === 'Temperature1') {
-              temp1 = sensor.value
-            } else if (sensor.type === 'Humidity1') {
-              hum1 = sensor.value
-            } else if (sensor.type === 'Temperature2') {
-              temp2 = sensor.value
-            } else if (sensor.type === 'Humidity2') {
-              hum2 = sensor.value
-            } else if (sensor.type === 'Relay Status') {
-              relay = sensor.value
-            } else if (sensor.type === 'PB8 Level') {
-              pb8 = sensor.value
-            }
+        for (const sensor of sensors) {
+          if (sensor.type === 'Temperature1') {
+            temp1 = sensor.value
+          } else if (sensor.type === 'Humidity1') {
+            hum1 = sensor.value
+          } else if (sensor.type === 'Temperature2') {
+            temp2 = sensor.value
+          } else if (sensor.type === 'Humidity2') {
+            hum2 = sensor.value
+          } else if (sensor.type === 'Relay Status') {
+            relay = sensor.value
+          } else if (sensor.type === 'PB8 Level') {
+            pb8 = sensor.value
           }
         }
         
@@ -316,14 +356,25 @@ export default {
       }
     }
     
+    // 设备选择变化时的处理
+    const onDeviceChange = () => {
+      // 重新获取数据
+      fetchRealTimeData()
+    }
+    
     onMounted(() => {
+      // 获取设备列表
+      fetchDevices()
+      
       // 初始化图表
       chart1 = echarts.init(document.getElementById('chart1'))
       chart2 = echarts.init(document.getElementById('chart2'))
       chart3 = echarts.init(document.getElementById('chart3'))
       
-      // 初始更新
-      fetchRealTimeData()
+      // 如果已有选中设备，获取数据
+      if (selectedDeviceId.value) {
+        fetchRealTimeData()
+      }
       
       // 设置定时更新（每3秒更新一次）
       const interval = setInterval(fetchRealTimeData, 3000)
@@ -346,14 +397,66 @@ export default {
     })
     
     return {
-      sensorData
+      sensorData,
+      devices,
+      selectedDeviceId,
+      onDeviceChange
     }
   }
 }
 </script>
 
 <style scoped>
+.device-container {
+  margin-top: 20px;
+  border: 2px solid #007bff;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.device-select {
+  margin-left: 10px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid #ced4da;
+  background-color: white;
+  color: #495057;
+  font-size: 16px;
+  min-width: 300px;
+}
+
+.sensor-card {
+  height: 100%;
+  transition: transform 0.3s ease;
+}
+
+.sensor-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.card-header {
+  font-weight: bold;
+}
+
 .sensor-values {
   text-align: center;
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .device-select {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    min-width: auto;
+  }
+  
+  .col-md-4 {
+    margin-bottom: 1.5rem;
+  }
 }
 </style>

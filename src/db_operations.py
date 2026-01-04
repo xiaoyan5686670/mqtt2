@@ -149,6 +149,26 @@ def get_device_history(db: Session, device_id: int):
     return db.query(SensorDataModel).filter(SensorDataModel.device_id == device_id).all()
 
 
+def get_latest_device_sensors(db: Session, device_id: int):
+    """获取指定设备的最新传感器数据"""
+    from sqlalchemy import desc
+    
+    # 获取指定设备的所有传感器数据，按时间戳降序排列
+    all_sensors = db.query(SensorDataModel).filter(
+        SensorDataModel.device_id == device_id
+    ).order_by(desc(SensorDataModel.timestamp)).all()
+    
+    # 按传感器类型分组，只保留每种类型最新的数据
+    latest_sensors = {}
+    for sensor in all_sensors:
+        sensor_type = sensor.type
+        if sensor_type not in latest_sensors:
+            latest_sensors[sensor_type] = sensor
+    
+    # 返回最新的传感器数据列表
+    return list(latest_sensors.values())
+
+
 def get_device_sensors(db: Session, device_id: int):
     """获取设备传感器数据"""
     return db.query(SensorDataModel).filter(SensorDataModel.device_id == device_id).all()

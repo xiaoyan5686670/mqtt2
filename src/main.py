@@ -166,7 +166,7 @@ from src.db_operations import (
     get_mqtt_configs, get_mqtt_config_by_id, create_mqtt_config, update_mqtt_config,
     delete_mqtt_config, activate_mqtt_config, get_active_topic_config, get_active_mqtt_config,  # 添加导入
     get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,
-    delete_topic_config, activate_topic_config
+    delete_topic_config, activate_topic_config, get_latest_device_sensors
 )
 
 # MQTT数据处理相关代码
@@ -239,6 +239,12 @@ async def delete_device_api(device_id: int, db: Session = Depends(get_db_session
     if not success:
         raise HTTPException(status_code=404, detail="Device not found")
     return {"message": "Device deleted successfully"}
+
+
+@app.get("/api/devices/{device_id}/latest-sensors", response_model=List[SensorData])
+async def get_latest_device_sensors_api(device_id: int, db: Session = Depends(get_db_session)):
+    sensors = get_latest_device_sensors(db, device_id)
+    return sensors
 
 
 @app.get("/api/devices/{device_id}/history", response_model=List[dict])
