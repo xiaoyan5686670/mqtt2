@@ -358,23 +358,37 @@ export default {
     
     // 设备选择变化时的处理
     const onDeviceChange = () => {
+      // 保存设备选择到本地存储
+      localStorage.setItem('selectedDeviceId', selectedDeviceId.value)
+      
       // 重新获取数据
       fetchRealTimeData()
     }
     
+    // 从本地存储加载设备选择
+    const loadSelectedDevice = () => {
+      const savedDeviceId = localStorage.getItem('selectedDeviceId')
+      if (savedDeviceId && devices.value.some(device => device.id == savedDeviceId)) {
+        selectedDeviceId.value = savedDeviceId
+      }
+    }
+    
     onMounted(() => {
       // 获取设备列表
-      fetchDevices()
-      
-      // 初始化图表
-      chart1 = echarts.init(document.getElementById('chart1'))
-      chart2 = echarts.init(document.getElementById('chart2'))
-      chart3 = echarts.init(document.getElementById('chart3'))
-      
-      // 如果已有选中设备，获取数据
-      if (selectedDeviceId.value) {
-        fetchRealTimeData()
-      }
+      fetchDevices().then(() => {
+        // 等待设备列表加载完成后再加载选中的设备
+        loadSelectedDevice()
+        
+        // 初始化图表
+        chart1 = echarts.init(document.getElementById('chart1'))
+        chart2 = echarts.init(document.getElementById('chart2'))
+        chart3 = echarts.init(document.getElementById('chart3'))
+        
+        // 如果已有选中设备，获取数据
+        if (selectedDeviceId.value) {
+          fetchRealTimeData()
+        }
+      })
       
       // 设置定时更新（每3秒更新一次）
       const interval = setInterval(fetchRealTimeData, 3000)
