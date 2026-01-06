@@ -210,20 +210,28 @@ class MQTTService:
                 if device:
                     device_name = device.name
                 else:
-                    print(f"设备 {device_candidate_1} 或 {device_candidate_2} 不存在，跳过处理")
-                    return
-
+                    device_name = device_candidate_1  # 使用第一部分作为设备名
+        
         # 检查设备名称是否有效（允许字母数字组合）
         if not device_name or len(device_name) <= 1:
             print(f"设备名称无效，跳过创建设备: {device_name}")
             return
         
         try:
-            # 查找设备
+            # 查找设备，如果不存在则自动创建
             device = self.db.query(DeviceModel).filter(DeviceModel.name == device_name).first()
             if not device:
-                print(f"设备 {device_name} 不存在，跳过处理")
-                return  # 不再自动创建设备，需要用户手动创建
+                print(f"设备 {device_name} 不存在，自动创建...")
+                device = DeviceModel(
+                    name=device_name,
+                    device_type="自动创建设备",
+                    status="在线",
+                    location="未知位置"
+                )
+                self.db.add(device)
+                self.db.commit()
+                self.db.refresh(device)  # 刷新以获取新分配的ID
+                print(f"已创建设备: {device_name}")
             
             # 保存传感器数据
             if temp1_match:

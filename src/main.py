@@ -191,7 +191,7 @@ app = FastAPI()
 # 添加CORS中间件 - 允许前端跨域请求
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 在生产环境中应指定具体域名
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"],  # 允许前端开发服务器
     allow_credentials=True,
     allow_methods=["*"],  # 允许所有HTTP方法，包括GET, POST, PUT, DELETE, OPTIONS等
     allow_headers=["*"],  # 允许所有请求头
@@ -431,10 +431,16 @@ async def get_mqtt_messages(
     # 转换为合适的格式
     result = []
     for msg in messages:
+        # 获取关联的设备信息
+        device = db.query(DeviceModel).filter(DeviceModel.id == msg.device_id).first()
+        device_name = device.name if device else "Unknown Device"
+        
         result.append({
-            "topic": msg.topic or "unknown",
+            "topic": f"device/{device_name}/{msg.type}" if device else f"sensor/{msg.id}",
             "payload": msg.value,
-            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
+            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+            "device_name": device_name,
+            "sensor_type": msg.type
         })
     
     return result

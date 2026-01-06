@@ -34,20 +34,32 @@ def get_devices(db: Session, skip: int = 0, limit: int = 100):
     return db.query(DeviceModel).offset(skip).limit(limit).all()
 
 
-def create_device(db: Session, device_data: dict):
+def create_device(db: Session, device_data):
     """创建设备"""
-    db_device = DeviceModel(**device_data)
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(device_data, 'dict'):
+        device_dict = device_data.dict()
+    else:
+        device_dict = device_data
+    
+    db_device = DeviceModel(**device_dict)
     db.add(db_device)
     db.commit()
     db.refresh(db_device)
     return db_device
 
 
-def update_device(db: Session, device_id: int, device_data: dict):
+def update_device(db: Session, device_id: int, device_data):
     """更新设备"""
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(device_data, 'dict'):
+        device_dict = device_data.dict()
+    else:
+        device_dict = device_data
+    
     db_device = db.query(DeviceModel).filter(DeviceModel.id == device_id).first()
     if db_device:
-        for key, value in device_data.items():
+        for key, value in device_dict.items():
             setattr(db_device, key, value)
         db.commit()
         db.refresh(db_device)
@@ -74,20 +86,32 @@ def get_mqtt_configs(db: Session, skip: int = 0, limit: int = 100):
     return db.query(MQTTConfigModel).offset(skip).limit(limit).all()
 
 
-def create_mqtt_config(db: Session, config_data: dict):
+def create_mqtt_config(db: Session, config_data):
     """创建MQTT配置"""
-    db_config = MQTTConfigModel(**config_data)
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(config_data, 'dict'):
+        config_dict = config_data.dict()
+    else:
+        config_dict = config_data
+    
+    db_config = MQTTConfigModel(**config_dict)
     db.add(db_config)
     db.commit()
     db.refresh(db_config)
     return db_config
 
 
-def update_mqtt_config(db: Session, config_id: int, config_data: dict):
+def update_mqtt_config(db: Session, config_id: int, config_data):
     """更新MQTT配置"""
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(config_data, 'dict'):
+        config_dict = config_data.dict()
+    else:
+        config_dict = config_data
+    
     db_config = db.query(MQTTConfigModel).filter(MQTTConfigModel.id == config_id).first()
     if db_config:
-        for key, value in config_data.items():
+        for key, value in config_dict.items():
             setattr(db_config, key, value)
         db.commit()
         db.refresh(db_config)
@@ -114,20 +138,32 @@ def get_topic_configs(db: Session, skip: int = 0, limit: int = 100):
     return db.query(TopicConfigModel).offset(skip).limit(limit).all()
 
 
-def create_topic_config(db: Session, config_data: dict):
+def create_topic_config(db: Session, config_data):
     """创建主题配置"""
-    db_config = TopicConfigModel(**config_data)
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(config_data, 'dict'):
+        config_dict = config_data.dict()
+    else:
+        config_dict = config_data
+    
+    db_config = TopicConfigModel(**config_dict)
     db.add(db_config)
     db.commit()
     db.refresh(db_config)
     return db_config
 
 
-def update_topic_config(db: Session, config_id: int, config_data: dict):
+def update_topic_config(db: Session, config_id: int, config_data):
     """更新主题配置"""
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(config_data, 'dict'):
+        config_dict = config_data.dict()
+    else:
+        config_dict = config_data
+    
     db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
     if db_config:
-        for key, value in config_data.items():
+        for key, value in config_dict.items():
             setattr(db_config, key, value)
         db.commit()
         db.refresh(db_config)
