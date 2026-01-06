@@ -22,7 +22,20 @@
       </div>
       
       <div class="card-body">
-        <div class="row">
+        <!-- 数据加载状态指示 -->
+        <div v-if="loadingData" class="text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">加载中...</span>
+          </div>
+          <p>正在加载传感器数据...</p>
+        </div>
+        
+        <!-- 错误信息 -->
+        <div v-if="error" class="alert alert-danger">
+          {{ error }}
+        </div>
+        
+        <div class="row" v-if="!loadingData">
           <!-- 温湿度传感器1 -->
           <div class="col-md-4">
             <div class="card sensor-card">
@@ -30,8 +43,7 @@
                 <h5 class="mb-0">传感器组 1 (Temperature1 & Humidity1)</h5>
               </div>
               <div class="card-body">
-                <div id="chart1" style="height: 300px;"></div>
-                <div class="sensor-values mt-3">
+                <div class="sensor-values">
                   <div class="row">
                     <div class="col">
                       <p class="mb-1">温度: <span class="fw-bold">{{ sensorData.temp1 }}°C</span></p>
@@ -50,8 +62,7 @@
                 <h5 class="mb-0">传感器组 2 (Temperature2 & Humidity2)</h5>
               </div>
               <div class="card-body">
-                <div id="chart2" style="height: 300px;"></div>
-                <div class="sensor-values mt-3">
+                <div class="sensor-values">
                   <div class="row">
                     <div class="col">
                       <p class="mb-1">温度: <span class="fw-bold">{{ sensorData.temp2 }}°C</span></p>
@@ -70,8 +81,7 @@
                 <h5 class="mb-0">控制组 (Relay & PB8)</h5>
               </div>
               <div class="card-body">
-                <div id="chart3" style="height: 300px;"></div>
-                <div class="sensor-values mt-3">
+                <div class="sensor-values">
                   <div class="row">
                     <div class="col">
                       <p class="mb-1">继电器状态: 
@@ -91,13 +101,52 @@
             </div>
           </div>
         </div>
+        
+        <!-- 趋势图区域 - 独立显示 -->
+        <div class="trend-charts-section mt-4">
+          <div class="row">
+            <div class="col-12">
+              <div class="card">
+                <div class="card-header bg-info text-white">
+                  <h5 class="mb-0">
+                    <i class="fas fa-chart-line"></i> 传感器数据趋势图
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <!-- 温湿度传感器1趋势图 -->
+                    <div class="col-md-4">
+                      <div class="chart-container">
+                        <div ref="chart1Ref" style="height: 300px;"></div>
+                      </div>
+                    </div>
+                    
+                    <!-- 温湿度传感器2趋势图 -->
+                    <div class="col-md-4">
+                      <div class="chart-container">
+                        <div ref="chart2Ref" style="height: 300px;"></div>
+                      </div>
+                    </div>
+                    
+                    <!-- 继电器和PB8趋势图 -->
+                    <div class="col-md-4">
+                      <div class="chart-container">
+                        <div ref="chart3Ref" style="height: 300px;"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import axios from 'axios'
 
@@ -120,10 +169,32 @@ export default {
     // 当前选中的设备ID
     const selectedDeviceId = ref('')
     
+    // 加载状态
+    const loadingData = ref(false)
+    
+    // 错误信息
+    const error = ref('')
+    
+    // 图表引用
+    const chart1Ref = ref(null)
+    const chart2Ref = ref(null)
+    const chart3Ref = ref(null)
+    
     // 图表实例
     let chart1 = null
     let chart2 = null
     let chart3 = null
+    
+    // 图表数据 - 保存最近20个数据点
+    const chartData = ref({
+      timeStamps: [],
+      temp1Data: [],
+      hum1Data: [],
+      temp2Data: [],
+      hum2Data: [],
+      relayData: [],
+      pb8Data: []
+    })
     
     // 获取设备列表
     const fetchDevices = async () => {
@@ -132,44 +203,42 @@ export default {
         devices.value = response.data
       } catch (error) {
         console.error('获取设备列表失败:', error)
+        error.value = '获取设备列表失败: ' + error.message
       }
     }
     
-    // 解析传感器数据
-    const parseSensorData = (rawData) => {
-      // 示例数据格式: "Temperature1: 22.10 C, Humidity1: 16.10 %\nTemperature2: 21.80 C, Humidity2: 23.40 %\nRelay Status: 1\nPB8 Level: 1"
-      
-      // 解析温度1和湿度1
-      const temp1Match = rawData.match(/Temperature1:\s*([\d.]+)\s*C/)
-      const hum1Match = rawData.match(/Humidity1:\s*([\d.]+)\s*%/)
-      
-      // 解析温度2和湿度2
-      const temp2Match = rawData.match(/Temperature2:\s*([\d.]+)\s*C/)
-      const hum2Match = rawData.match(/Humidity2:\s*([\d.]+)\s*%/)
-      
-      // 解析继电器状态
-      const relayMatch = rawData.match(/Relay Status:\s*(\d)/)
-      
-      // 解析PB8电平
-      const pb8Match = rawData.match(/PB8 Level:\s*(\d)/)
-      
-      return {
-        temp1: temp1Match ? parseFloat(temp1Match[1]) : 0,
-        hum1: hum1Match ? parseFloat(hum1Match[1]) : 0,
-        temp2: temp2Match ? parseFloat(temp2Match[1]) : 0,
-        hum2: hum2Match ? parseFloat(hum2Match[1]) : 0,
-        relay: relayMatch ? parseInt(relayMatch[1]) : 0,
-        pb8: pb8Match ? parseInt(pb8Match[1]) : 0
-      }
-    }
-    
-    // 更新图表
+    // 更新图表 - 改为显示时间序列数据
     const updateCharts = () => {
+      // 当前时间戳
+      const now = new Date().toLocaleTimeString()
+      
+      // 更新时间轴数据 - 保留最近20个数据点
+      chartData.value.timeStamps.push(now)
+      if(chartData.value.timeStamps.length > 20) {
+        chartData.value.timeStamps.shift()
+      }
+      
+      // 更新传感器数据
+      chartData.value.temp1Data.push(sensorData.value.temp1)
+      chartData.value.hum1Data.push(sensorData.value.hum1)
+      chartData.value.temp2Data.push(sensorData.value.temp2)
+      chartData.value.hum2Data.push(sensorData.value.hum2)
+      chartData.value.relayData.push(sensorData.value.relay)
+      chartData.value.pb8Data.push(sensorData.value.pb8)
+      
+      // 限制数据长度为20个点
+      if(chartData.value.temp1Data.length > 20) chartData.value.temp1Data.shift()
+      if(chartData.value.hum1Data.length > 20) chartData.value.hum1Data.shift()
+      if(chartData.value.temp2Data.length > 20) chartData.value.temp2Data.shift()
+      if(chartData.value.hum2Data.length > 20) chartData.value.hum2Data.shift()
+      if(chartData.value.relayData.length > 20) chartData.value.relayData.shift()
+      if(chartData.value.pb8Data.length > 20) chartData.value.pb8Data.shift()
+      
       // 图表1 - 温湿度传感器1
       if (chart1) {
         const option1 = {
           title: {
-            text: '温湿度1'
+            text: '温湿度1趋势'
           },
           tooltip: {
             trigger: 'axis'
@@ -180,7 +249,7 @@ export default {
           xAxis: {
             type: 'category',
             boundaryGap: false,
-            data: ['当前']
+            data: chartData.value.timeStamps
           },
           yAxis: [
             {
@@ -203,26 +272,28 @@ export default {
               name: '温度',
               type: 'line',
               yAxisIndex: 0,
-              data: [sensorData.value.temp1],
-              itemStyle: { color: '#FF6384' }
+              data: chartData.value.temp1Data,
+              itemStyle: { color: '#FF6384' },
+              smooth: true
             },
             {
               name: '湿度',
               type: 'line',
               yAxisIndex: 1,
-              data: [sensorData.value.hum1],
-              itemStyle: { color: '#36A2EB' }
+              data: chartData.value.hum1Data,
+              itemStyle: { color: '#36A2EB' },
+              smooth: true
             }
           ]
         }
-        chart1.setOption(option1)
+        chart1.setOption(option1, { notMerge: true })
       }
       
       // 图表2 - 温湿度传感器2
       if (chart2) {
         const option2 = {
           title: {
-            text: '温湿度2'
+            text: '温湿度2趋势'
           },
           tooltip: {
             trigger: 'axis'
@@ -233,7 +304,7 @@ export default {
           xAxis: {
             type: 'category',
             boundaryGap: false,
-            data: ['当前']
+            data: chartData.value.timeStamps
           },
           yAxis: [
             {
@@ -256,26 +327,28 @@ export default {
               name: '温度',
               type: 'line',
               yAxisIndex: 0,
-              data: [sensorData.value.temp2],
-              itemStyle: { color: '#FF6384' }
+              data: chartData.value.temp2Data,
+              itemStyle: { color: '#FF6384' },
+              smooth: true
             },
             {
               name: '湿度',
               type: 'line',
               yAxisIndex: 1,
-              data: [sensorData.value.hum2],
-              itemStyle: { color: '#36A2EB' }
+              data: chartData.value.hum2Data,
+              itemStyle: { color: '#36A2EB' },
+              smooth: true
             }
           ]
         }
-        chart2.setOption(option2)
+        chart2.setOption(option2, { notMerge: true })
       }
       
       // 图表3 - 继电器和PB8
       if (chart3) {
         const option3 = {
           title: {
-            text: '控制状态'
+            text: '控制状态趋势'
           },
           tooltip: {
             trigger: 'axis'
@@ -286,7 +359,7 @@ export default {
           xAxis: {
             type: 'category',
             boundaryGap: false,
-            data: ['当前']
+            data: chartData.value.timeStamps
           },
           yAxis: {
             type: 'value',
@@ -299,7 +372,7 @@ export default {
               name: '继电器',
               type: 'line',
               step: 'start',
-              data: [sensorData.value.relay],
+              data: chartData.value.relayData,
               itemStyle: { color: '#4CAF50' },
               areaStyle: {}
             },
@@ -307,52 +380,75 @@ export default {
               name: 'PB8',
               type: 'line',
               step: 'start',
-              data: [sensorData.value.pb8],
+              data: chartData.value.pb8Data,
               itemStyle: { color: '#2196F3' },
               areaStyle: {}
             }
           ]
         }
-        chart3.setOption(option3)
+        chart3.setOption(option3, { notMerge: true })
       }
     }
     
     // 获取实时数据
     const fetchRealTimeData = async () => {
       if (!selectedDeviceId.value) {
+        error.value = '请先选择一个设备'
         return
       }
+      
+      loadingData.value = true
+      error.value = ''
       
       try {
         // 获取指定设备的最新传感器数据
         const response = await axios.get(`/api/devices/${selectedDeviceId.value}/latest-sensors`)
+        console.log('API Response:', response.data) // 调试信息
+        
+        // 临时存储数据，以便在出错时保留旧数据
+        const tempSensorData = { ...sensorData.value }
+        
+        // 重置数据
+        tempSensorData.temp1 = 0
+        tempSensorData.hum1 = 0
+        tempSensorData.temp2 = 0
+        tempSensorData.hum2 = 0
+        tempSensorData.relay = 0
+        tempSensorData.pb8 = 0
+        
         const sensors = response.data
         
-        // 解析传感器数据
-        let temp1 = 0, hum1 = 0, temp2 = 0, hum2 = 0, relay = 0, pb8 = 0
-        
         for (const sensor of sensors) {
+          console.log('Processing sensor:', sensor) // 调试信息
           if (sensor.type === 'Temperature1') {
-            temp1 = sensor.value
+            tempSensorData.temp1 = sensor.value
           } else if (sensor.type === 'Humidity1') {
-            hum1 = sensor.value
+            tempSensorData.hum1 = sensor.value
           } else if (sensor.type === 'Temperature2') {
-            temp2 = sensor.value
+            tempSensorData.temp2 = sensor.value
           } else if (sensor.type === 'Humidity2') {
-            hum2 = sensor.value
+            tempSensorData.hum2 = sensor.value
           } else if (sensor.type === 'Relay Status') {
-            relay = sensor.value
+            tempSensorData.relay = sensor.value
           } else if (sensor.type === 'PB8 Level') {
-            pb8 = sensor.value
+            tempSensorData.pb8 = sensor.value
           }
         }
         
-        sensorData.value = { temp1, hum1, temp2, hum2, relay, pb8 }
+        // 只有在成功处理完数据后才更新实际的数据
+        sensorData.value = tempSensorData
+        
+        console.log('Updated sensor data:', sensorData.value) // 调试信息
         
         // 更新图表
         updateCharts()
-      } catch (error) {
-        console.error('获取实时数据失败:', error)
+      } catch (err) {
+        console.error('获取实时数据失败:', err)
+        error.value = `获取数据失败: ${err.message || '未知错误'}`
+        
+        // 不要清空现有数据，保留最后一次有效数据
+      } finally {
+        loadingData.value = false
       }
     }
     
@@ -360,6 +456,17 @@ export default {
     const onDeviceChange = () => {
       // 保存设备选择到本地存储
       localStorage.setItem('selectedDeviceId', selectedDeviceId.value)
+      
+      // 清空图表数据，准备显示新设备的数据
+      chartData.value = {
+        timeStamps: [],
+        temp1Data: [],
+        hum1Data: [],
+        temp2Data: [],
+        hum2Data: [],
+        relayData: [],
+        pb8Data: []
+      }
       
       // 重新获取数据
       fetchRealTimeData()
@@ -373,25 +480,42 @@ export default {
       }
     }
     
-    onMounted(() => {
+    // 初始化图表
+    const initCharts = async () => {
+      await nextTick() // 确保DOM已更新
+      
+      if (chart1Ref.value) {
+        chart1 = echarts.init(chart1Ref.value)
+      }
+      if (chart2Ref.value) {
+        chart2 = echarts.init(chart2Ref.value)
+      }
+      if (chart3Ref.value) {
+        chart3 = echarts.init(chart3Ref.value)
+      }
+      
+      // 如果已有选中设备，获取数据
+      if (selectedDeviceId.value) {
+        fetchRealTimeData()
+      }
+    }
+    
+    onMounted(async () => {
       // 获取设备列表
-      fetchDevices().then(() => {
-        // 等待设备列表加载完成后再加载选中的设备
-        loadSelectedDevice()
-        
-        // 初始化图表
-        chart1 = echarts.init(document.getElementById('chart1'))
-        chart2 = echarts.init(document.getElementById('chart2'))
-        chart3 = echarts.init(document.getElementById('chart3'))
-        
-        // 如果已有选中设备，获取数据
+      await fetchDevices()
+      
+      // 等待设备列表加载完成后再加载选中的设备
+      loadSelectedDevice()
+      
+      // 初始化图表
+      await initCharts()
+      
+      // 设置定时更新（每3秒更新一次）
+      const interval = setInterval(() => {
         if (selectedDeviceId.value) {
           fetchRealTimeData()
         }
-      })
-      
-      // 设置定时更新（每3秒更新一次）
-      const interval = setInterval(fetchRealTimeData, 3000)
+      }, 3000)
       
       // 保存interval ID以便在组件卸载时清理
       window.realtimeInterval = interval
@@ -414,7 +538,12 @@ export default {
       sensorData,
       devices,
       selectedDeviceId,
-      onDeviceChange
+      loadingData,
+      error,
+      onDeviceChange,
+      chart1Ref,
+      chart2Ref,
+      chart3Ref
     }
   }
 }
@@ -461,6 +590,17 @@ export default {
   padding: 1.25rem;
 }
 
+.trend-charts-section {
+  margin-top: 20px;
+}
+
+.chart-container {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 10px;
+  height: 100%;
+}
+
 @media (max-width: 768px) {
   .device-select {
     display: block;
@@ -471,6 +611,10 @@ export default {
   
   .col-md-4 {
     margin-bottom: 1.5rem;
+  }
+  
+  .col-md-4 .chart-container {
+    margin-top: 15px;
   }
 }
 </style>
