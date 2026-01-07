@@ -86,7 +86,7 @@ class DeviceUpdate(BaseModel):
 
 class Device(DeviceBase):
     id: int
-    status: str
+    status: Optional[str] = "offline"  # 默认值设置为"offline"
     mqtt_config_id: Optional[int] = None
     topic_config_id: Optional[int] = None
 

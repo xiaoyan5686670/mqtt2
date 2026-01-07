@@ -237,8 +237,13 @@ def get_latest_sensors(db: Session):
     for sensor in sensors:
         device_id = sensor.device_id
         if device_id not in devices:
+            # 获取设备名称
+            device = get_device_by_id(db, device_id)
+            device_name = device.name if device else f"设备{device_id}"
+            
             devices[device_id] = {
                 'device_id': device_id,
+                'device_name': device_name,
                 'sensors': []
             }
         # 添加传感器数据
@@ -307,3 +312,18 @@ def update_topic_config(db: Session, config_id: int, config_data: dict):
         db.commit()
         db.refresh(db_config)
     return db_config
+
+
+def fix_device_status_null_values(db: Session):
+    """修复设备表中status字段的NULL值"""
+    # 查询所有status为NULL的设备
+    null_status_devices = db.query(DeviceModel).filter(
+        DeviceModel.status.is_(None)
+    ).all()
+    
+    # 将NULL值更新为默认值"offline"
+    for device in null_status_devices:
+        device.status = "offline"
+    
+    db.commit()
+

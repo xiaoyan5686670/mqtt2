@@ -7,6 +7,9 @@ import { createPinia } from 'pinia'
 import axios from 'axios'
 axios.defaults.baseURL = 'http://localhost:8000'  // 后端API运行在8000端口
 
+// 配置axios携带凭证（如cookies）
+axios.defaults.withCredentials = true
+
 // 创建Vue应用
 const app = createApp(App)
 

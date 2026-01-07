@@ -166,7 +166,7 @@ from src.db_operations import (
     get_mqtt_configs, get_mqtt_config_by_id, create_mqtt_config, update_mqtt_config,
     delete_mqtt_config, activate_mqtt_config, get_active_topic_config, get_active_mqtt_config,  # 添加导入
     get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,
-    delete_topic_config, activate_topic_config, get_latest_device_sensors
+    delete_topic_config, activate_topic_config, get_latest_device_sensors, fix_device_status_null_values
 )
 
 # MQTT数据处理相关代码
@@ -185,6 +185,10 @@ def start_mqtt_service():
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
+# 修复数据库中可能存在的NULL状态值
+with SessionLocal() as db:
+    fix_device_status_null_values(db)
+
 # 创建FastAPI应用
 app = FastAPI()
 
@@ -194,7 +198,15 @@ app.add_middleware(
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"],  # 允许前端开发服务器
     allow_credentials=True,
     allow_methods=["*"],  # 允许所有HTTP方法，包括GET, POST, PUT, DELETE, OPTIONS等
-    allow_headers=["*"],  # 允许所有请求头
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Accept",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers"
+    ],  # 明确指定允许的请求头，避免使用通配符与凭证冲突
 )
 
 # 获取当前文件所在目录的路径
@@ -226,7 +238,7 @@ async def create_device_api(device: DeviceCreate, db: Session = Depends(get_db_s
 
 
 @app.put("/api/devices/{device_id}", response_model=Device)
-async def update_device_api(device_id: int, device: Device, db: Session = Depends(get_db_session)):
+async def update_device_api(device_id: int, device: DeviceUpdate, db: Session = Depends(get_db_session)):
     db_device = update_device(db, device_id, device)
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
