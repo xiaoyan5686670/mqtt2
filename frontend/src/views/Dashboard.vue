@@ -53,10 +53,10 @@
       <div class="col-md-12">
         <div class="card">
           <div class="card-header">
-            <h5>传感器数据</h5>
+            <h5>传感器数据趋势</h5>
           </div>
           <div class="card-body">
-            <div id="sensorChart" style="height: 400px;"></div>
+            <div id="sensorChart" ref="sensorChartRef" style="height: 400px;"></div>
           </div>
         </div>
       </div>
@@ -73,9 +73,45 @@ export default {
   name: 'Dashboard',
   setup() {
     const devices = ref([])
-    const sensorChart = ref(null)
+    const sensorChartRef = ref(null)
     let chartInstance = null
     let refreshInterval = null
+    
+    // 图表数据 - 从 localStorage 加载或初始化
+    const loadChartData = () => {
+      const savedData = localStorage.getItem('dashboardChartData')
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData)
+          return {
+            timeStamps: parsed.timeStamps || [],
+            sensorData: parsed.sensorData || {}
+          }
+        } catch (e) {
+          console.error('加载图表数据失败:', e)
+          return {
+            timeStamps: [],
+            sensorData: {}
+          }
+        }
+      }
+      return {
+        timeStamps: [],
+        sensorData: {}
+      }
+    }
+    
+    // 保存图表数据到 localStorage
+    const saveChartData = (data) => {
+      try {
+        localStorage.setItem('dashboardChartData', JSON.stringify(data))
+      } catch (e) {
+        console.error('保存图表数据失败:', e)
+      }
+    }
+    
+    // 初始化图表数据
+    const chartData = loadChartData()
 
     // 计算属性
     const onlineDevices = () => devices.value.filter(d => d.is_online).length
@@ -96,95 +132,127 @@ export default {
       }
     }
 
-    // 获取传感器数据
-    const fetchSensors = async () => {
+    // 获取所有传感器的最新数据
+    const fetchLatestSensors = async () => {
       try {
-        const response = await axios.get('/api/sensors')
+        const response = await axios.get('/api/latest-sensors')
         return response.data
       } catch (error) {
-        console.error('获取传感器数据失败:', error)
+        console.error('获取最新传感器数据失败:', error)
         return []
       }
     }
 
     // 初始化图表
     const initChart = async () => {
-      if (sensorChart.value) {
-        chartInstance = echarts.init(sensorChart.value)
+      if (sensorChartRef.value) {
+        chartInstance = echarts.init(sensorChartRef.value)
         
         // 获取传感器数据并更新图表
-        const sensors = await fetchSensors()
+        const sensors = await fetchLatestSensors()
         updateChart(sensors)
       }
     }
 
     // 更新图表
-    const updateChart = (sensors) => {
+    const updateChart = (sensorGroups) => {
       if (!chartInstance) return
 
-      // 准备图表数据 - 按设备分组显示传感器数据
-      const groupedData = {}
-      sensors.forEach(sensor => {
-        const deviceKey = sensor.device_id
-        if (!groupedData[deviceKey]) {
-          groupedData[deviceKey] = []
-        }
-        groupedData[deviceKey].push(sensor)
-      })
+      // 当前时间戳
+      const now = new Date().toLocaleTimeString()
+      
+      // 更新时间轴数据 - 保留最近20个数据点
+      chartData.timeStamps.push(now)
+      if(chartData.timeStamps.length > 20) {
+        chartData.timeStamps.shift()
+      }
 
-      // 为每个设备创建一个图表系列
+      // 准备图表数据 - 按传感器类型分组
       const seriesData = []
-      for (const [deviceId, deviceSensors] of Object.entries(groupedData)) {
-        const device = devices.value.find(d => d.id == deviceId)
-        const deviceName = device ? device.name : `设备${deviceId}`
+      const legendData = []
+      
+      // 遍历所有设备的传感器数据
+      sensorGroups.forEach(deviceData => {
+        const deviceName = deviceData.device_name || `设备${deviceData.device_id}`
         
-        deviceSensors.forEach(sensor => {
+        deviceData.sensors.forEach(sensor => {
+          const sensorKey = `${deviceName}-${sensor.type}`
+          
+          // 初始化传感器数据数组
+          if (!chartData.sensorData[sensorKey]) {
+            chartData.sensorData[sensorKey] = []
+          }
+          
+          // 添加当前值到传感器数据数组
+          chartData.sensorData[sensorKey].push(sensor.value)
+          
+          // 限制数据长度为20个点
+          if(chartData.sensorData[sensorKey].length > 20) {
+            chartData.sensorData[sensorKey].shift()
+          }
+          
+          // 添加到图例
+          legendData.push(sensorKey)
+          
+          // 添加到系列数据
           seriesData.push({
-            name: `${deviceName}-${sensor.type}`,
-            value: sensor.value,
-            unit: sensor.unit
+            name: sensorKey,
+            type: 'line',
+            data: chartData.sensorData[sensorKey],
+            smooth: true,
+            symbol: 'none', // 不显示数据点标记
+            lineStyle: {
+              width: 2
+            }
           })
         })
-      }
+      })
 
       const option = {
         tooltip: {
-          trigger: 'item',
-          formatter: '{a} <br/>{b}: {c} {d}'
+          trigger: 'axis',
+          formatter: function(params) {
+            if (params.length === 0) return ''
+            let result = params[0].axisValue + '<br/>'
+            params.forEach(param => {
+              result += param.marker + ' ' + param.seriesName + ': ' + param.data + '<br/>'
+            })
+            return result
+          }
         },
         legend: {
-          top: '5%',
+          data: legendData,
+          type: 'scroll', // 启用滚动功能
+          orient: 'horizontal',
+          top: '10px',
           left: 'center'
         },
-        series: [{
-          name: '传感器数据',
-          type: 'pie',
-          radius: ['30%', '60%'],
-          avoidLabelOverlap: false,
-          itemStyle: {
-            borderRadius: 10,
-            borderColor: '#fff',
-            borderWidth: 2
-          },
-          label: {
-            show: true,
-            formatter: '{b}: {c} {d}%'
-          },
-          emphasis: {
-            label: {
-              show: true,
-              fontSize: '14',
-              fontWeight: 'bold'
-            }
-          },
-          labelLine: {
-            show: true
-          },
-          data: seriesData
-        }]
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          top: '15%',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: chartData.timeStamps
+        },
+        yAxis: {
+          type: 'value',
+          min: function(value) {
+            // 确保Y轴最小值略低于数据最小值
+            return Math.min(0, value.min * 0.9)
+          }
+        },
+        series: seriesData
       }
 
       chartInstance.setOption(option, true) // 使用true参数进行完整重绘
+      
+      // 保存图表数据到 localStorage
+      saveChartData(chartData)
     }
 
     onMounted(async () => {
@@ -194,7 +262,7 @@ export default {
       // 设置定时刷新
       refreshInterval = setInterval(async () => {
         await fetchDevices()
-        const sensors = await fetchSensors()
+        const sensors = await fetchLatestSensors()
         updateChart(sensors)
       }, 5000)
     })
@@ -206,19 +274,21 @@ export default {
       if (refreshInterval) {
         clearInterval(refreshInterval)
       }
+      // 保存数据到 localStorage
+      saveChartData(chartData)
     })
 
     // 监听设备数据变化，更新图表
     watch(devices, async () => {
       if (chartInstance) {
-        const sensors = await fetchSensors()
+        const sensors = await fetchLatestSensors()
         updateChart(sensors)
       }
     }, { deep: true })
 
     return {
       devices,
-      sensorChart,
+      sensorChartRef,
       onlineDevices: onlineDevices(),
       offlineDevices: offlineDevices(),
       sensorCount: sensorCount()
