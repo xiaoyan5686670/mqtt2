@@ -292,9 +292,17 @@ def get_active_mqtt_config(db: Session):
 
 def update_topic_config(db: Session, config_id: int, config_data: dict):
     """更新主题配置"""
+    # 如果传入的是Pydantic模型，转换为字典
+    if hasattr(config_data, 'model_dump'):
+        config_dict = config_data.model_dump(exclude_unset=True)
+    elif hasattr(config_data, 'dict'):
+        config_dict = config_data.dict()
+    else:
+        config_dict = config_data
+    
     db_config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
     if db_config:
-        for key, value in config_data.items():
+        for key, value in config_dict.items():
             setattr(db_config, key, value)
         db.commit()
         db.refresh(db_config)

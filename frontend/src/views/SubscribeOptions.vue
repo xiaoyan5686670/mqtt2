@@ -253,21 +253,24 @@ export default {
     const toggleConfig = async (config) => {
       try {
         if (config.is_active) {
-          // 如果是激活状态，先停止消费
+          // 如果是激活状态，停用配置
+          // 先停止消费（如果正在消费）
           if (isConsuming.value) {
             stopConsuming()
           }
-          // 这里可以有停用配置的API调用
+          
+          // 将配置设为非激活状态
+          const updatedConfig = { ...config, is_active: false }
+          await axios.put(`/api/topic-configs/${config.id}`, updatedConfig)
           await loadConfigs()
-          alert(`已停止配置 "${config.name}"`)
+          alert(`已停用配置 "${config.name}"`)
         } else {
           // 如果是非激活状态，激活它
-          await axios.post(`/api/topic-configs/${config.id}/activate`)
+          // 直接激活当前配置，不处理其他配置的状态
+          const updatedConfig = { ...config, is_active: true }
+          await axios.put(`/api/topic-configs/${config.id}`, updatedConfig)
           await loadConfigs()
           alert(`已激活配置 "${config.name}"`)
-          
-          // 同时启动消费
-          startConsuming(config)
         }
       } catch (error) {
         console.error('切换配置状态失败:', error)
