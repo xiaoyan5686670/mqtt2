@@ -161,12 +161,10 @@ class TopicConfig(TopicConfigBase):
 
 # 导入数据库操作函数
 from src.db_operations import (
-    get_devices, get_device, create_device, update_device, delete_device, 
-    get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors,
-    get_mqtt_configs, get_mqtt_config_by_id, create_mqtt_config, update_mqtt_config,
-    delete_mqtt_config, activate_mqtt_config, get_active_topic_config, get_active_mqtt_config,  # 添加导入
-    get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,
-    delete_topic_config, activate_topic_config, get_latest_device_sensors
+    get_device_by_id, get_device, get_device_by_name, get_devices, create_device, update_device, delete_device,
+    get_mqtt_configs, create_mqtt_config, get_mqtt_config_by_id, update_mqtt_config, delete_mqtt_config, activate_mqtt_config,
+    get_active_mqtt_config, get_active_topic_config, 
+    delete_topic_config, activate_topic_config, deactivate_topic_config, get_latest_device_sensors, get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors, get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config  # 添加get_topic_configs等函数导入
 )
 
 # MQTT数据处理相关代码
@@ -188,14 +186,51 @@ Base.metadata.create_all(bind=engine)
 # 创建FastAPI应用
 app = FastAPI()
 
-# 添加CORS中间件 - 允许前端跨域请求
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000", "http://127.0.0.1:8000"],  # 允许前端开发服务器
-    allow_credentials=True,
-    allow_methods=["*"],  # 允许所有HTTP方法，包括GET, POST, PUT, DELETE, OPTIONS等
-    allow_headers=["*"],  # 允许所有请求头
-)
+# 添加动态CORS中间件以支持局域网IP访问
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+from urllib.parse import urlparse
+import ipaddress
+
+class CORSMiddlewareForLAN(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # 处理预检请求
+        if request.method == "OPTIONS":
+            response = Response(content="")
+        else:
+            response = await call_next(request)
+        
+        # 获取请求的来源
+        origin = request.headers.get('origin')
+        if origin:
+            try:
+                parsed_origin = urlparse(origin)
+                hostname = parsed_origin.hostname
+                
+                # 检查是否是localhost或127.0.0.1
+                if hostname in ['localhost', '127.0.0.1']:
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                else:
+                    # 检查是否是局域网IP
+                    ip = ipaddress.ip_address(hostname)
+                    
+                    # 检查是否是私有IP地址（局域网IP），但不是回环地址
+                    if ip.is_private and not ip.is_loopback:
+                        response.headers['Access-Control-Allow-Origin'] = origin
+                
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Headers'] = request.headers.get(
+                    "Access-Control-Request-Headers", "Content-Type, Authorization"
+                )
+                response.headers['Access-Control-Allow-Methods'] = "GET, POST, PUT, DELETE, OPTIONS"
+            except ValueError:
+                # 如果不是有效的IP地址格式，跳过处理
+                pass
+        
+        return response
+
+# 添加动态CORS中间件
+app.add_middleware(CORSMiddlewareForLAN)
 
 # 获取当前文件所在目录的路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -351,7 +386,8 @@ async def create_topic_config_api(config: TopicConfigCreate, db: Session = Depen
 
 @app.put("/api/topic-configs/{config_id}", response_model=TopicConfig)
 async def update_topic_config_api(config_id: int, config: TopicConfigUpdate, db: Session = Depends(get_db_session)):
-    db_config = update_topic_config(db, config_id, config)
+    config_data = config.model_dump(exclude_unset=True)
+    db_config = update_topic_config(db, config_id, config_data)
     if not db_config:
         raise HTTPException(status_code=404, detail="Topic Config not found")
     return db_config
@@ -372,6 +408,14 @@ async def activate_topic_config_api(config_id: int, db: Session = Depends(get_db
     if not success:
         raise HTTPException(status_code=404, detail="Topic Config not found")
     return {"message": "Topic Config activated successfully"}
+
+
+@app.post("/api/topic-configs/{config_id}/deactivate")
+async def deactivate_topic_config_api(config_id: int, db: Session = Depends(get_db_session)):
+    success = deactivate_topic_config(db, config_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Topic Config not found")
+    return {"message": "Topic Config deactivated successfully"}
 
 
 # MQTT消费相关的API端点
@@ -413,6 +457,16 @@ async def unsubscribe_from_topic(
         return {"message": f"成功取消订阅主题: {topic}", "topic": topic}
     
     raise HTTPException(status_code=500, detail="MQTT服务未启动")
+
+
+@app.post("/api/stop-consuming")
+async def stop_consuming():
+    """停止MQTT消费服务"""
+    try:
+        mqtt_service.stop()
+        return {"message": "MQTT消费服务已停止"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"停止消费服务失败: {str(e)}")
 
 
 # 用于获取实时MQTT消息的API

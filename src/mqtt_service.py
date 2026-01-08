@@ -87,10 +87,13 @@ class MQTTService:
         """断开连接回调"""
         print("MQTT连接断开")
         self.is_connected = False
-        self.is_connected = False
 
     def subscribe_to_topics(self):
         """订阅主题"""
+        # 重新获取激活的主题配置
+        if self.db:
+            self.topic_config = get_active_topic_config(self.db)
+        
         if not self.client or not self.topic_config:
             print("MQTT客户端或主题配置未初始化")
             return
@@ -104,6 +107,26 @@ class MQTTService:
                 print(f"已订阅主题: {topic}")
         except Exception as e:
             print(f"订阅主题失败: {e}")
+
+    def unsubscribe_from_topics(self):
+        """取消订阅所有主题"""
+        # 重新获取激活的主题配置
+        if self.db:
+            self.topic_config = get_active_topic_config(self.db)
+        
+        if not self.client or not self.topic_config:
+            print("MQTT客户端或主题配置未初始化")
+            return
+
+        try:
+            # 解析订阅主题列表
+            topics = self.parse_topics(self.topic_config.subscribe_topics)
+            
+            for topic in topics:
+                self.client.unsubscribe(topic)
+                print(f"已取消订阅主题: {topic}")
+        except Exception as e:
+            print(f"取消订阅主题失败: {e}")
 
     def parse_topics(self, topics_str: str) -> List[str]:
         """解析主题字符串为列表"""
@@ -525,6 +548,8 @@ class MQTTService:
     def stop(self):
         """停止MQTT服务"""
         if self.client:
+            # 先取消订阅当前主题
+            self.unsubscribe_from_topics()
             print("停止MQTT服务...")
             self.client.loop_stop()
             self.client.disconnect()

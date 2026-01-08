@@ -276,6 +276,26 @@ def activate_topic_config(db: Session, config_id: int):
     if config:
         config.is_active = True
         db.commit()
+        
+        # 启动MQTT服务
+        from src.mqtt_service import start_mqtt_service
+        start_mqtt_service()
+        
+        return True
+    return False
+
+
+def deactivate_topic_config(db: Session, config_id: int):
+    """停用主题配置"""
+    config = db.query(TopicConfigModel).filter(TopicConfigModel.id == config_id).first()
+    if config:
+        config.is_active = False
+        db.commit()
+        
+        # 停止MQTT服务
+        from src.mqtt_service import stop_mqtt_service, mqtt_service
+        stop_mqtt_service()
+        
         return True
     return False
 

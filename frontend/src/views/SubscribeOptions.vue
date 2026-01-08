@@ -43,7 +43,7 @@
                         :class="config.is_active ? 'btn-warning' : 'btn-success'" 
                         @click="toggleConfig(config)"
                       >
-                        {{ config.is_active ? '停止' : '开启' }}
+                        {{ config.is_active ? '停止' : '启动' }}
                       </button>
                       <button 
                         class="btn btn-sm btn-outline-danger" 
@@ -253,20 +253,23 @@ export default {
     const toggleConfig = async (config) => {
       try {
         if (config.is_active) {
-          // 如果是激活状态，停用配置
-          // 先停止消费（如果正在消费）
-          if (isConsuming.value) {
-            stopConsuming()
-          }
-          
-          // 将配置设为非激活状态
+          // 如果是激活状态，停用配置 - 通过更新is_active字段
           const updatedConfig = { ...config, is_active: false }
           await axios.put(`/api/topic-configs/${config.id}`, updatedConfig)
           await loadConfigs()
           alert(`已停用配置 "${config.name}"`)
         } else {
-          // 如果是非激活状态，激活它
-          // 直接激活当前配置，不处理其他配置的状态
+          // 如果是非激活状态，激活它 - 通过更新is_active字段
+          // 先停用所有其他配置
+          const allConfigs = await axios.get('/api/topic-configs')
+          for (const cfg of allConfigs.data) {
+            if (cfg.is_active && cfg.id !== config.id) {
+              const inactiveConfig = { ...cfg, is_active: false }
+              await axios.put(`/api/topic-configs/${cfg.id}`, inactiveConfig)
+            }
+          }
+          
+          // 激活当前配置
           const updatedConfig = { ...config, is_active: true }
           await axios.put(`/api/topic-configs/${config.id}`, updatedConfig)
           await loadConfigs()
@@ -345,13 +348,8 @@ export default {
 
     const stopConsuming = async () => {
       try {
-        // 如果有激活的配置，停止订阅
-        const activeConfig = configs.value.find(c => c.is_active)
-        if (activeConfig) {
-          await axios.post('/api/unsubscribe-topic', {
-            topic: activeConfig.subscribe_topics
-          })
-        }
+        // 调用后端API停止消费
+        await axios.post('/api/stop-consuming')
         
         isConsuming.value = false
         if (consumptionInterval.value) {
