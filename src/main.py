@@ -159,12 +159,21 @@ class TopicConfig(TopicConfigBase):
         from_attributes = True
 
 
+    get_devices, get_device, create_device, update_device, delete_device, 
+    get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors,
+    get_mqtt_configs, get_mqtt_config_by_id, create_mqtt_config, update_mqtt_config,
+    delete_mqtt_config, activate_mqtt_config, get_active_topic_config, get_active_mqtt_config,  # 添加导入
+    get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,
+    delete_topic_config, activate_topic_config, get_latest_device_sensors, fix_device_status_null_values
+>>>>>>> 431a81accd9303063fe1d8167eac1291ec82c540
+)
 # 导入数据库操作函数
 from src.db_operations import (
     get_device_by_id, get_device, get_device_by_name, get_devices, create_device, update_device, delete_device,
     get_mqtt_configs, create_mqtt_config, get_mqtt_config_by_id, update_mqtt_config, delete_mqtt_config, activate_mqtt_config,
     get_active_mqtt_config, get_active_topic_config, 
-    delete_topic_config, activate_topic_config, deactivate_topic_config, get_latest_device_sensors, get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors, get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config  # 添加get_topic_configs等函数导入
+    delete_topic_config, activate_topic_config, deactivate_topic_config, get_latest_device_sensors, get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors, get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,  # 添加get_topic_configs等函数导入
+    fix_device_status_null_values
 )
 
 # MQTT数据处理相关代码
@@ -183,51 +192,12 @@ def start_mqtt_service():
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
+# 修复数据库中可能存在的NULL状态值
+with SessionLocal() as db:
+    fix_device_status_null_values(db)
+
 # 创建FastAPI应用
 app = FastAPI()
-
-# 添加动态CORS中间件以支持局域网IP访问
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-from urllib.parse import urlparse
-import ipaddress
-
-class CORSMiddlewareForLAN(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        # 处理预检请求
-        if request.method == "OPTIONS":
-            response = Response(content="")
-        else:
-            response = await call_next(request)
-        
-        # 获取请求的来源
-        origin = request.headers.get('origin')
-        if origin:
-            try:
-                parsed_origin = urlparse(origin)
-                hostname = parsed_origin.hostname
-                
-                # 检查是否是localhost或127.0.0.1
-                if hostname in ['localhost', '127.0.0.1']:
-                    response.headers['Access-Control-Allow-Origin'] = origin
-                else:
-                    # 检查是否是局域网IP
-                    ip = ipaddress.ip_address(hostname)
-                    
-                    # 检查是否是私有IP地址（局域网IP），但不是回环地址
-                    if ip.is_private and not ip.is_loopback:
-                        response.headers['Access-Control-Allow-Origin'] = origin
-                
-                response.headers['Access-Control-Allow-Credentials'] = 'true'
-                response.headers['Access-Control-Allow-Headers'] = request.headers.get(
-                    "Access-Control-Request-Headers", "Content-Type, Authorization"
-                )
-                response.headers['Access-Control-Allow-Methods'] = "GET, POST, PUT, DELETE, OPTIONS"
-            except ValueError:
-                # 如果不是有效的IP地址格式，跳过处理
-                pass
-        
-        return response
 
 # 添加动态CORS中间件
 app.add_middleware(CORSMiddlewareForLAN)
@@ -261,7 +231,7 @@ async def create_device_api(device: DeviceCreate, db: Session = Depends(get_db_s
 
 
 @app.put("/api/devices/{device_id}", response_model=Device)
-async def update_device_api(device_id: int, device: Device, db: Session = Depends(get_db_session)):
+async def update_device_api(device_id: int, device: DeviceUpdate, db: Session = Depends(get_db_session)):
     db_device = update_device(db, device_id, device)
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")

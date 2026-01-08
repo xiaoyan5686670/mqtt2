@@ -37,6 +37,9 @@ axios.interceptors.response.use(
   }
 );
 
+// 配置axios携带凭证（如cookies）
+axios.defaults.withCredentials = true
+
 // 创建Vue应用
 const app = createApp(App)
 
