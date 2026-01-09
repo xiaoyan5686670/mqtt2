@@ -253,25 +253,13 @@ export default {
     const toggleConfig = async (config) => {
       try {
         if (config.is_active) {
-          // 如果是激活状态，停用配置 - 通过更新is_active字段
-          const updatedConfig = { ...config, is_active: false }
-          await axios.put(`/api/topic-configs/${config.id}`, updatedConfig)
+          // 如果是激活状态，停用配置 - 使用专用的停用API端点
+          await axios.post(`/api/topic-configs/${config.id}/deactivate`)
           await loadConfigs()
           alert(`已停用配置 "${config.name}"`)
         } else {
-          // 如果是非激活状态，激活它 - 通过更新is_active字段
-          // 先停用所有其他配置
-          const allConfigs = await axios.get('/api/topic-configs')
-          for (const cfg of allConfigs.data) {
-            if (cfg.is_active && cfg.id !== config.id) {
-              const inactiveConfig = { ...cfg, is_active: false }
-              await axios.put(`/api/topic-configs/${cfg.id}`, inactiveConfig)
-            }
-          }
-          
-          // 激活当前配置
-          const updatedConfig = { ...config, is_active: true }
-          await axios.put(`/api/topic-configs/${config.id}`, updatedConfig)
+          // 如果是非激活状态，激活它 - 使用专用的激活API端点
+          await axios.post(`/api/topic-configs/${config.id}/activate`)
           await loadConfigs()
           alert(`已激活配置 "${config.name}"`)
         }

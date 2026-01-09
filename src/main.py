@@ -159,13 +159,14 @@ class TopicConfig(TopicConfigBase):
         from_attributes = True
 
 
-    get_devices, get_device, create_device, update_device, delete_device, 
-    get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors,
-    get_mqtt_configs, get_mqtt_config_by_id, create_mqtt_config, update_mqtt_config,
-    delete_mqtt_config, activate_mqtt_config, get_active_topic_config, get_active_mqtt_config,  # 添加导入
-    get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,
-    delete_topic_config, activate_topic_config, get_latest_device_sensors, fix_device_status_null_values
->>>>>>> 431a81accd9303063fe1d8167eac1291ec82c540
+
+# 导入数据库操作函数
+from src.db_operations import (
+    get_device_by_id, get_device, get_device_by_name, get_devices, create_device, update_device, delete_device,
+    get_mqtt_configs, create_mqtt_config, get_mqtt_config_by_id, update_mqtt_config, delete_mqtt_config, activate_mqtt_config,
+    get_active_mqtt_config, get_active_topic_config, 
+    delete_topic_config, activate_topic_config, deactivate_topic_config, get_latest_device_sensors, get_device_history, get_device_sensors, get_realtime_sensors, get_latest_sensors, get_topic_configs, get_topic_config_by_id, create_topic_config, update_topic_config,  # 添加get_topic_configs等函数导入
+    fix_device_status_null_values
 )
 # 导入数据库操作函数
 from src.db_operations import (
@@ -189,10 +190,17 @@ def start_mqtt_service():
     return mqtt_service.start()
 
 
+# 导入模型以确保表被创建
+from src.models import DeviceModel, SensorDataModel, MQTTConfigModel, TopicConfigModel
+
 # 创建数据库表
+from src.database import engine, Base
+print("Creating database tables...")
 Base.metadata.create_all(bind=engine)
+print("Database tables created successfully.")
 
 # 修复数据库中可能存在的NULL状态值
+from src.db_operations import fix_device_status_null_values
 with SessionLocal() as db:
     fix_device_status_null_values(db)
 
@@ -200,7 +208,14 @@ with SessionLocal() as db:
 app = FastAPI()
 
 # 添加动态CORS中间件
-app.add_middleware(CORSMiddlewareForLAN)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://192.168.15.1:3000", "http://localhost:3000", "http://127.0.0.1:3000"],  # 指定允许的源地址
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    # 可以添加更多选项，如expose_headers, max_age等
+)
 
 # 获取当前文件所在目录的路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
